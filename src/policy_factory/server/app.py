@@ -9,20 +9,24 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator
 
 import jwt as pyjwt
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from policy_factory.auth import decode_access_token
 from policy_factory.data.init import get_data_dir, initialize_data_directory
+from policy_factory.events import EventEmitter
+from policy_factory.server.broadcast import BroadcastHandler
 from policy_factory.server.deps import init_deps
 from policy_factory.server.routers import (
+    activity_router,
     auth_router,
     health_router,
     history_router,
     layers_router,
     users_router,
 )
+from policy_factory.server.ws import ConnectionManager
 
 if TYPE_CHECKING:
     from policy_factory.store import PolicyStore
@@ -32,19 +36,28 @@ logger = logging.getLogger(__name__)
 
 def create_app(
     store: PolicyStore | None = None,
-    ws_manager: object | None = None,
+    ws_manager: ConnectionManager | None = None,
+    event_emitter: EventEmitter | None = None,
+    broadcast_handler: BroadcastHandler | None = None,
     data_dir: Path | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Args:
         store: PolicyStore instance (or None for testing).
-        ws_manager: WebSocket connection manager (or None).
+        ws_manager: WebSocket ConnectionManager (or None — created automatically).
+        event_emitter: EventEmitter instance (or None — created automatically).
+        broadcast_handler: BroadcastHandler (or None — created automatically if
+            store, ws_manager, and emitter are available).
         data_dir: Override for the data directory path. If None, uses
             the ``POLICY_FACTORY_DATA_DIR`` env var or defaults to ``data/``.
     """
     # Resolve the data directory path (but don't initialize yet — that happens in lifespan)
     resolved_data_dir = data_dir if data_dir is not None else get_data_dir()
+
+    # Create defaults for event infrastructure if not provided
+    _ws_manager = ws_manager or ConnectionManager()
+    _event_emitter = event_emitter or EventEmitter()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -55,14 +68,27 @@ def create_app(
             logger.exception("Failed to initialize data directory at %s", resolved_data_dir)
             raise
 
+        # Create broadcast handler if store is available and no handler was passed
+        _broadcast_handler = broadcast_handler
+        if _broadcast_handler is None and store is not None:
+            _broadcast_handler = BroadcastHandler(
+                store=store,
+                ws_manager=_ws_manager,
+                emitter=_event_emitter,
+            )
+
         # Startup: initialize dependencies
         init_deps(
             store=store,
-            ws_manager=ws_manager,
+            ws_manager=_ws_manager,
+            event_emitter=_event_emitter,
+            broadcast_handler=_broadcast_handler,
             data_dir=resolved_data_dir,
         )
         yield
-        # Shutdown: cleanup if needed
+        # Shutdown: cleanup broadcast handler
+        if _broadcast_handler is not None:
+            _broadcast_handler.shutdown()
 
     app = FastAPI(title="Policy Factory", lifespan=lifespan)
 
@@ -72,6 +98,7 @@ def create_app(
     app.include_router(users_router)
     app.include_router(layers_router)
     app.include_router(history_router)
+    app.include_router(activity_router)
 
     # --- WebSocket endpoint with JWT authentication ---
     @app.websocket("/ws")
@@ -84,36 +111,31 @@ def create_app(
         """
         token = websocket.query_params.get("token")
 
-        if not token:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
+        # Verify the user still exists before accepting the connection.
+        # The ConnectionManager validates the JWT; we additionally check
+        # the user hasn't been deleted since the token was issued.
+        if token and store is not None:
+            try:
+                payload = decode_access_token(token)
+                user = store.get_user_by_id(payload.user_id)
+                if user is None:
+                    await websocket.close(code=4001, reason="User no longer exists")
+                    return
+            except (pyjwt.ExpiredSignatureError, pyjwt.InvalidTokenError):
+                pass  # Let ConnectionManager.connect() handle JWT errors
 
-        # Validate the token
-        try:
-            payload = decode_access_token(token)
-        except (pyjwt.ExpiredSignatureError, pyjwt.InvalidTokenError):
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        # ConnectionManager.connect() handles JWT validation
+        accepted = await _ws_manager.connect(websocket, token)
+        if not accepted:
             return
-
-        # Verify the user still exists
-        if store is None:
-            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-            return
-
-        user = store.get_user_by_id(payload.user_id)
-        if user is None:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
-
-        # Accept the connection
-        await websocket.accept()
 
         try:
             while True:
-                # Keep the connection alive — receive and discard client messages
+                # Keep the connection alive — receive and discard client messages.
+                # Future steps may add inbound message handling.
                 await websocket.receive_text()
         except WebSocketDisconnect:
-            pass
+            _ws_manager.disconnect(websocket)
 
     # --- Static File Serving ---
 

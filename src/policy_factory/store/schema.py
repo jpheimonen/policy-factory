@@ -14,6 +14,20 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    data TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    layer_slug TEXT,
+    category TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_layer_slug ON events(layer_slug);
+CREATE INDEX IF NOT EXISTS idx_events_category ON events(category);
 """
 
 

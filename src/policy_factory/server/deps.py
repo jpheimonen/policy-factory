@@ -1,8 +1,10 @@
 """Dependency injection for FastAPI routes."""
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -12,11 +14,18 @@ from policy_factory.auth import decode_access_token
 from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
 
+if TYPE_CHECKING:
+    from policy_factory.events import EventEmitter
+    from policy_factory.server.broadcast import BroadcastHandler
+    from policy_factory.server.ws import ConnectionManager
+
 logger = logging.getLogger(__name__)
 
 # Global instances (set during app startup)
 _store: PolicyStore | None = None
-_ws_manager: object | None = None
+_ws_manager: ConnectionManager | None = None
+_event_emitter: EventEmitter | None = None
+_broadcast_handler: BroadcastHandler | None = None
 _data_dir: Path | None = None
 
 # Security scheme for Bearer token extraction
@@ -25,16 +34,20 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 def init_deps(
     store: PolicyStore | None = None,
-    ws_manager: object | None = None,
+    ws_manager: ConnectionManager | None = None,
+    event_emitter: EventEmitter | None = None,
+    broadcast_handler: BroadcastHandler | None = None,
     data_dir: Path | None = None,
 ) -> None:
     """Initialize global dependencies.
 
     Called during FastAPI lifespan startup to set up shared resources.
     """
-    global _store, _ws_manager, _data_dir
+    global _store, _ws_manager, _event_emitter, _broadcast_handler, _data_dir
     _store = store
     _ws_manager = ws_manager
+    _event_emitter = event_emitter
+    _broadcast_handler = broadcast_handler
     _data_dir = data_dir
 
 
@@ -66,11 +79,11 @@ def get_data_dir() -> Path:
     return _data_dir
 
 
-def get_ws_manager() -> object:
-    """Get the WebSocket manager instance.
+def get_ws_manager() -> ConnectionManager:
+    """Get the WebSocket connection manager instance.
 
     Returns:
-        The WebSocket manager instance.
+        The ConnectionManager instance.
 
     Raises:
         RuntimeError: If the WebSocket manager has not been initialized.
@@ -78,6 +91,24 @@ def get_ws_manager() -> object:
     if _ws_manager is None:
         raise RuntimeError("WebSocket manager not initialized - call init_deps() first")
     return _ws_manager
+
+
+def get_event_emitter() -> EventEmitter:
+    """Get the EventEmitter singleton.
+
+    This is the single shared emitter instance used by all code that
+    needs to emit events (cascade orchestrator, critic runner, heartbeat,
+    etc.).
+
+    Returns:
+        The EventEmitter instance.
+
+    Raises:
+        RuntimeError: If the event emitter has not been initialized.
+    """
+    if _event_emitter is None:
+        raise RuntimeError("Event emitter not initialized - call init_deps() first")
+    return _event_emitter
 
 
 async def get_current_user(

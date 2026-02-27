@@ -8,15 +8,17 @@ from pathlib import Path
 
 from .auth import AuthStoreMixin, User, UserPublic
 from .base import BaseStore
+from .events import EventStoreMixin, StoredEvent
 from .schema import get_default_db_path, init_db
 
 
-class PolicyStore(BaseStore, AuthStoreMixin):
+class PolicyStore(BaseStore, AuthStoreMixin, EventStoreMixin):
     """SQLite-backed store for Policy Factory.
 
     This class combines:
     - BaseStore: Database connection initialization
     - AuthStoreMixin: User authentication storage
+    - EventStoreMixin: Event persistence and retrieval
 
     Additional mixins will be added in later steps as new
     feature domains are built (ideas, cascade, heartbeat, etc.).
@@ -31,6 +33,7 @@ class PolicyStore(BaseStore, AuthStoreMixin):
 
 __all__ = [
     "PolicyStore",
+    "StoredEvent",
     "User",
     "UserPublic",
     "get_default_db_path",
