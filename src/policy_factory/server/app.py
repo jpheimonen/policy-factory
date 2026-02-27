@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from importlib.resources import files
+from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator
 
 import jwt as pyjwt
@@ -13,6 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from policy_factory.auth import decode_access_token
+from policy_factory.data.init import get_data_dir, initialize_data_directory
 from policy_factory.server.deps import init_deps
 from policy_factory.server.routers import auth_router, health_router, users_router
 
@@ -25,15 +27,33 @@ logger = logging.getLogger(__name__)
 def create_app(
     store: PolicyStore | None = None,
     ws_manager: object | None = None,
+    data_dir: Path | None = None,
 ) -> FastAPI:
-    """Create and configure the FastAPI application."""
+    """Create and configure the FastAPI application.
+
+    Args:
+        store: PolicyStore instance (or None for testing).
+        ws_manager: WebSocket connection manager (or None).
+        data_dir: Override for the data directory path. If None, uses
+            the ``POLICY_FACTORY_DATA_DIR`` env var or defaults to ``data/``.
+    """
+    # Resolve the data directory path (but don't initialize yet — that happens in lifespan)
+    resolved_data_dir = data_dir if data_dir is not None else get_data_dir()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        # Startup: initialize data directory (first-run setup)
+        try:
+            initialize_data_directory(resolved_data_dir)
+        except OSError:
+            logger.exception("Failed to initialize data directory at %s", resolved_data_dir)
+            raise
+
         # Startup: initialize dependencies
         init_deps(
             store=store,
             ws_manager=ws_manager,
+            data_dir=resolved_data_dir,
         )
         yield
         # Shutdown: cleanup if needed

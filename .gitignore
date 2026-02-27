@@ -28,8 +28,8 @@ src/policy_factory/static/dist/
 *.sqlite
 *.sqlite3
 
-# Data directory (separate git repo)
-data/
+# Data directory (separate git repo — top-level only, not src/policy_factory/data/)
+/data/
 
 # IDE files
 .vscode/

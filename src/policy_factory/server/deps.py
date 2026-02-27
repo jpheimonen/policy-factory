@@ -1,6 +1,7 @@
 """Dependency injection for FastAPI routes."""
 
 import logging
+from pathlib import Path
 from typing import Annotated
 
 import jwt
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Global instances (set during app startup)
 _store: PolicyStore | None = None
 _ws_manager: object | None = None
+_data_dir: Path | None = None
 
 # Security scheme for Bearer token extraction
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -24,14 +26,16 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 def init_deps(
     store: PolicyStore | None = None,
     ws_manager: object | None = None,
+    data_dir: Path | None = None,
 ) -> None:
     """Initialize global dependencies.
 
     Called during FastAPI lifespan startup to set up shared resources.
     """
-    global _store, _ws_manager
+    global _store, _ws_manager, _data_dir
     _store = store
     _ws_manager = ws_manager
+    _data_dir = data_dir
 
 
 def get_store() -> PolicyStore:
@@ -46,6 +50,20 @@ def get_store() -> PolicyStore:
     if _store is None:
         raise RuntimeError("Store not initialized - call init_deps() first")
     return _store
+
+
+def get_data_dir() -> Path:
+    """Get the data directory path.
+
+    Returns:
+        The configured data directory path.
+
+    Raises:
+        RuntimeError: If the data directory has not been initialized.
+    """
+    if _data_dir is None:
+        raise RuntimeError("Data directory not initialized - call init_deps() first")
+    return _data_dir
 
 
 def get_ws_manager() -> object:
