@@ -1,9 +1,11 @@
 """FastAPI application with REST API, WebSocket, and static file serving."""
 
+from __future__ import annotations
+
 import logging
 from contextlib import asynccontextmanager
 from importlib.resources import files
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -12,11 +14,14 @@ from fastapi.staticfiles import StaticFiles
 from policy_factory.server.deps import init_deps
 from policy_factory.server.routers import health_router
 
+if TYPE_CHECKING:
+    from policy_factory.store import PolicyStore
+
 logger = logging.getLogger(__name__)
 
 
 def create_app(
-    store: object | None = None,
+    store: PolicyStore | None = None,
     ws_manager: object | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application."""

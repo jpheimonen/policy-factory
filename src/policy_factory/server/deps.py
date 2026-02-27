@@ -1,16 +1,22 @@
 """Dependency injection for FastAPI routes."""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from policy_factory.store import PolicyStore
 
 logger = logging.getLogger(__name__)
 
 # Global instances (set during app startup)
-_store: object | None = None
+_store: PolicyStore | None = None
 _ws_manager: object | None = None
 
 
 def init_deps(
-    store: object | None = None,
+    store: PolicyStore | None = None,
     ws_manager: object | None = None,
 ) -> None:
     """Initialize global dependencies.
@@ -22,11 +28,11 @@ def init_deps(
     _ws_manager = ws_manager
 
 
-def get_store() -> object:
+def get_store() -> PolicyStore:
     """Get the store instance.
 
     Returns:
-        The store instance.
+        The PolicyStore instance.
 
     Raises:
         RuntimeError: If the store has not been initialized.

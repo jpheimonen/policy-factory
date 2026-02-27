@@ -106,9 +106,15 @@ def server_command(args: argparse.Namespace) -> int:
 
     from policy_factory.server.app import create_app
     from policy_factory.server.port_utils import find_available_port, is_port_available
+    from policy_factory.store import PolicyStore, get_default_db_path
 
-    # Create app
-    app = create_app()
+    # Initialize the store
+    db_path = get_default_db_path()
+    store = PolicyStore(db_path)
+    print(f"Database initialized at {db_path}")
+
+    # Create app with store
+    app = create_app(store=store)
 
     # Determine the port to use
     requested_port = args.port
