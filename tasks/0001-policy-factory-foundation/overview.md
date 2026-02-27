@@ -12,7 +12,7 @@ The reference implementation for technical patterns is the ModernPath Software F
 
 | Step | Title | Done | Description |
 |------|-------|------|-------------|
-| [001](001.md) | Project scaffold and dev tooling | [ ] | Python backend package at `src/policy_factory/` with hatchling build, Vite + React 19 + TypeScript frontend in `ui/`, Makefile with `make dev` (port auto-detection, concurrent backend+frontend), .env multi-location loading, and pyproject.toml CLI entry point. |
+| [001](001.md) | Project scaffold and dev tooling | [x] | Python backend package at `src/policy_factory/` with hatchling build, Vite + React 19 + TypeScript frontend in `ui/`, Makefile with `make dev` (port auto-detection, concurrent backend+frontend), .env multi-location loading, and pyproject.toml CLI entry point. |
 | [002](002.md) | Design system and theming | [ ] | styled-components theme with full token system (colors, spacing, typography, borders, shadows) for both dark and light modes. Inter font, layer identity colors, Linear/Notion aesthetic. System-preference detection with user-overridable toggle persisted to localStorage. Global styles and CSS reset. |
 | [003](003.md) | i18n infrastructure | [ ] | Translation system with externalized strings. Flat key namespace organized by page/feature. English translation file covering all UI strings. i18n provider wrapping the app. Utility for components to access translations by key. Architecture supports adding locales without touching component code. |
 | [004](004.md) | SQLite store foundation | [ ] | SQLite store with WAL mode, mixin composition pattern, and schema initialization. Auth mixin (user CRUD with bcrypt hashing). Idempotent table creation. Database file location configurable via environment variable. |

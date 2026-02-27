@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Environment files
+.env
+!env.example
+
+# Node.js
+node_modules/
+
+# Built frontend assets (populated by build step)
+src/policy_factory/static/dist/
+!src/policy_factory/static/dist/.gitkeep
+
+# SQLite database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Data directory (separate git repo)
+data/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Agent memory (created by CI tooling)
+agent-memories/
