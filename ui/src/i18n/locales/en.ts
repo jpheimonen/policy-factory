@@ -36,6 +36,8 @@ const en = {
     actions: "Actions",
     yes: "Yes",
     no: "No",
+    comingSoon: "Coming soon",
+    initializing: "Initializing…",
   },
 
   // ── Navigation ──────────────────────────────────────────────────────
@@ -68,6 +70,7 @@ const en = {
     errorSessionExpired: "Your session has expired. Please sign in again.",
     errorPasswordMismatch: "Passwords do not match",
     errorEmailRequired: "Email is required",
+    errorEmailInvalid: "Please enter a valid email address",
     errorPasswordRequired: "Password is required",
     errorRegistrationClosed: "Registration is closed. Contact an admin.",
   },

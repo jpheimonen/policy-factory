@@ -140,7 +140,30 @@ def _try_get_user_from_token(
     )
 
 
+# --- Response Models for Status ---
+
+
+class AuthStatusResponse(BaseModel):
+    """Response for the auth status check."""
+
+    has_users: bool
+
+
 # --- Endpoints ---
+
+
+@router.get("/status")
+async def auth_status(
+    store: Annotated[PolicyStore, Depends(get_store)],
+) -> AuthStatusResponse:
+    """Check whether any users exist in the system.
+
+    Used by the frontend on initial load to decide whether to show
+    the registration page (first-user flow) or the login page.
+
+    This endpoint is public — no authentication required.
+    """
+    return AuthStatusResponse(has_users=store.count_users() > 0)
 
 
 @router.post("/login")
