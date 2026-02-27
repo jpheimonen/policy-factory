@@ -57,6 +57,9 @@ const en = {
     cascadeStatusPaused: "Cascade paused",
     cascadeStatusFailed: "Cascade failed",
     cascadeProcessing: "Processing {layer}",
+    connectionReconnecting: "Reconnecting\u2026",
+    connectionLost: "Connection lost",
+    connectionReconnect: "Reconnect",
   },
 
   // ── Authentication ──────────────────────────────────────────────────

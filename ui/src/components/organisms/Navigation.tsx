@@ -8,6 +8,7 @@
  * - Admin link (only visible to admin users)
  * - Active route highlighting
  * - Cascade status indicator (idle / running / paused / failed)
+ * - WebSocket connection status (reconnecting / connection lost)
  * - Current user email display
  * - Theme toggle (dark/light)
  * - Logout button
@@ -20,6 +21,7 @@ import { useTranslation } from "@/i18n/index.ts";
 import { useAuthStore } from "@/stores/authStore.ts";
 import { useThemeStore, type ThemePreference } from "@/stores/themeStore.ts";
 import { useCascadeStore } from "@/stores/cascadeStore.ts";
+import { useWebSocketStatus } from "@/hooks/WebSocketProvider.tsx";
 import { Button, IconButton } from "@/components/atoms/index.ts";
 import {
   NavBar,
@@ -32,6 +34,8 @@ import {
   CascadeStatusWrapper,
   CascadeStatusDot,
   CascadeStatusText,
+  ConnectionStatusWrapper,
+  ConnectionStatusText,
   type CascadeIndicatorStatus,
 } from "./Navigation.styles.ts";
 
@@ -126,6 +130,46 @@ function CascadeStatusIndicator() {
   );
 }
 
+// ── Connection status indicator ──────────────────────────────────────
+
+function ConnectionStatusIndicator() {
+  const { t } = useTranslation();
+  const wsStatus = useWebSocketStatus();
+
+  // No WebSocket context (shouldn't happen inside protected routes)
+  if (!wsStatus) return null;
+
+  const { reconnecting, disconnected, reconnect } = wsStatus;
+
+  if (reconnecting) {
+    return (
+      <ConnectionStatusWrapper>
+        <CascadeStatusDot $status="paused" />
+        <ConnectionStatusText>
+          {t("nav.connectionReconnecting")}
+        </ConnectionStatusText>
+      </ConnectionStatusWrapper>
+    );
+  }
+
+  if (disconnected) {
+    return (
+      <ConnectionStatusWrapper>
+        <CascadeStatusDot $status="failed" />
+        <ConnectionStatusText>
+          {t("nav.connectionLost")}
+        </ConnectionStatusText>
+        <Button $variant="ghost" $size="sm" onClick={reconnect}>
+          {t("nav.connectionReconnect")}
+        </Button>
+      </ConnectionStatusWrapper>
+    );
+  }
+
+  // Connected — show nothing (default state)
+  return null;
+}
+
 // ── Navigation component ─────────────────────────────────────────────
 
 export function Navigation() {
@@ -172,6 +216,7 @@ export function Navigation() {
       </NavLinks>
 
       <CascadeStatusIndicator />
+      <ConnectionStatusIndicator />
 
       <NavRight>
         {user && <UserEmail>{user.email}</UserEmail>}

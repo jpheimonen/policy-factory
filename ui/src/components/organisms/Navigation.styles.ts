@@ -187,3 +187,20 @@ export const CascadeStatusText = styled.span<{ $status: CascadeIndicatorStatus }
       color: ${theme.colors.text.muted};
     `}
 `;
+
+// ── Connection status indicator ──────────────────────────────────────
+
+export const ConnectionStatusWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.xs};
+  padding: 2px ${({ theme }) => theme.spacing.sm};
+  border-radius: ${({ theme }) => theme.radii.xl};
+  font-size: ${({ theme }) => theme.fontSizes.xs};
+  font-weight: 500;
+  white-space: nowrap;
+`;
+
+export const ConnectionStatusText = styled.span`
+  color: ${({ theme }) => theme.colors.status.warning.text};
+`;

@@ -1,10 +1,15 @@
 /**
  * App layout wrapper for protected pages.
  *
- * Renders the Navigation header followed by the page content (Outlet).
- * Only rendered for authenticated users.
+ * Renders the WebSocket provider (global connection), the Navigation header,
+ * and the page content (Outlet). Only rendered for authenticated users.
+ *
+ * The WebSocket provider is placed here (inside the protected route area)
+ * so the connection is only established when the user is authenticated
+ * and torn down when they log out.
  */
 import { Outlet } from "react-router-dom";
+import { WebSocketProvider } from "@/hooks/WebSocketProvider.tsx";
 import { Navigation } from "./Navigation.tsx";
 import styled from "styled-components";
 
@@ -21,11 +26,13 @@ const MainContent = styled.main`
 
 export function AppLayout() {
   return (
-    <LayoutWrapper>
-      <Navigation />
-      <MainContent>
-        <Outlet />
-      </MainContent>
-    </LayoutWrapper>
+    <WebSocketProvider>
+      <LayoutWrapper>
+        <Navigation />
+        <MainContent>
+          <Outlet />
+        </MainContent>
+      </LayoutWrapper>
+    </WebSocketProvider>
   );
 }
