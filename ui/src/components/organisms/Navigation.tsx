@@ -6,16 +6,20 @@
  * - App name / brand
  * - Nav links to main pages (home, ideas, cascade, activity)
  * - Admin link (only visible to admin users)
+ * - Active route highlighting
+ * - Cascade status indicator (idle / running / paused / failed)
  * - Current user email display
  * - Theme toggle (dark/light)
  * - Logout button
  *
  * All labels use i18n translation keys.
  */
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/i18n/index.ts";
 import { useAuthStore } from "@/stores/authStore.ts";
 import { useThemeStore, type ThemePreference } from "@/stores/themeStore.ts";
+import { useCascadeStore } from "@/stores/cascadeStore.ts";
 import { Button, IconButton } from "@/components/atoms/index.ts";
 import {
   NavBar,
@@ -25,7 +29,13 @@ import {
   NavRight,
   UserEmail,
   NavDivider,
+  CascadeStatusWrapper,
+  CascadeStatusDot,
+  CascadeStatusText,
+  type CascadeIndicatorStatus,
 } from "./Navigation.styles.ts";
+
+// ── SVG icons ────────────────────────────────────────────────────────
 
 /** Simple SVG icons for theme toggle. Inline to avoid extra dependencies. */
 function SunIcon() {
@@ -70,6 +80,54 @@ function MoonIcon() {
   );
 }
 
+// ── Cascade status indicator ─────────────────────────────────────────
+
+function CascadeStatusIndicator() {
+  const { t } = useTranslation();
+  const status = useCascadeStore((s) => s.status);
+  const fetchStatus = useCascadeStore((s) => s.fetchStatus);
+
+  // Fetch cascade status on mount
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  // Map cascade store status to indicator status
+  const indicatorStatus: CascadeIndicatorStatus =
+    status === "running" || status === "queued"
+      ? "running"
+      : status === "paused"
+        ? "paused"
+        : status === "failed"
+          ? "failed"
+          : "idle";
+
+  // Don't show the indicator when idle (clean UI)
+  if (indicatorStatus === "idle") {
+    return null;
+  }
+
+  const statusLabel =
+    indicatorStatus === "running"
+      ? t("nav.cascadeStatusRunning")
+      : indicatorStatus === "paused"
+        ? t("nav.cascadeStatusPaused")
+        : indicatorStatus === "failed"
+          ? t("nav.cascadeStatusFailed")
+          : t("nav.cascadeStatusIdle");
+
+  return (
+    <CascadeStatusWrapper>
+      <CascadeStatusDot $status={indicatorStatus} />
+      <CascadeStatusText $status={indicatorStatus}>
+        {statusLabel}
+      </CascadeStatusText>
+    </CascadeStatusWrapper>
+  );
+}
+
+// ── Navigation component ─────────────────────────────────────────────
+
 export function Navigation() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -86,7 +144,11 @@ export function Navigation() {
 
   const handleThemeToggle = () => {
     const nextPreference: ThemePreference =
-      preference === "dark" ? "light" : preference === "light" ? "system" : "dark";
+      preference === "dark"
+        ? "light"
+        : preference === "light"
+          ? "system"
+          : "dark";
     setPreference(nextPreference);
   };
 
@@ -101,13 +163,15 @@ export function Navigation() {
 
       <NavLinks>
         <NavLink to="/" end>
-          {t("nav.stackOverview")}
+          {t("nav.home")}
         </NavLink>
         <NavLink to="/ideas">{t("nav.ideas")}</NavLink>
         <NavLink to="/cascade">{t("nav.cascade")}</NavLink>
         <NavLink to="/activity">{t("nav.activity")}</NavLink>
         {isAdmin && <NavLink to="/admin">{t("nav.admin")}</NavLink>}
       </NavLinks>
+
+      <CascadeStatusIndicator />
 
       <NavRight>
         {user && <UserEmail>{user.email}</UserEmail>}

@@ -7,14 +7,14 @@
  * Route structure:
  *   /login — LoginPage (public)
  *   /register — RegisterPage (public, with redirect-if-users-exist guard)
- *   / — placeholder home page (protected)
- *   /layers/:slug — placeholder layer detail (protected)
- *   /layers/:slug/:item — placeholder item detail (protected)
- *   /ideas — placeholder ideas page (protected)
- *   /cascade — placeholder cascade viewer (protected)
- *   /activity — placeholder activity feed (protected)
- *   /history/:slug — placeholder version history (protected)
- *   /admin — placeholder admin panel (protected)
+ *   / — StackOverviewPage (protected, home page)
+ *   /layers/:slug — LayerDetailPage (protected)
+ *   /layers/:slug/:item — ItemDetailPage (protected)
+ *   /ideas — IdeasPage (protected)
+ *   /cascade — CascadePage (protected)
+ *   /activity — ActivityPage (protected)
+ *   /history/:slug — HistoryPage (protected)
+ *   /admin — AdminPage (protected)
  *   * — catch-all redirects to /
  *
  * Auth initialization:
@@ -35,7 +35,14 @@ import { ProtectedRoute } from "@/components/organisms/ProtectedRoute.tsx";
 import { AppLayout } from "@/components/organisms/AppLayout.tsx";
 import { LoginPage } from "@/pages/auth/LoginPage.tsx";
 import { RegisterPage } from "@/pages/auth/RegisterPage.tsx";
-import { PlaceholderPage } from "@/pages/PlaceholderPage.tsx";
+import { StackOverviewPage } from "@/pages/StackOverviewPage.tsx";
+import { LayerDetailPage } from "@/pages/LayerDetailPage.tsx";
+import { ItemDetailPage } from "@/pages/ItemDetailPage.tsx";
+import { IdeasPage } from "@/pages/IdeasPage.tsx";
+import { CascadePage } from "@/pages/CascadePage.tsx";
+import { ActivityPage } from "@/pages/ActivityPage.tsx";
+import { HistoryPage } from "@/pages/HistoryPage.tsx";
+import { AdminPage } from "@/pages/AdminPage.tsx";
 
 /** Loading spinner shown during auth initialization. */
 function InitializingScreen() {
@@ -82,38 +89,14 @@ function AppContent() {
           {/* Protected routes — wrapped in ProtectedRoute + AppLayout */}
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
-              <Route
-                index
-                element={<PlaceholderPage titleKey="stackOverview.title" />}
-              />
-              <Route
-                path="/layers/:slug"
-                element={<PlaceholderPage titleKey="layers.narrativeSummary" />}
-              />
-              <Route
-                path="/layers/:slug/:item"
-                element={<PlaceholderPage titleKey="items.title" />}
-              />
-              <Route
-                path="/ideas"
-                element={<PlaceholderPage titleKey="nav.ideas" />}
-              />
-              <Route
-                path="/cascade"
-                element={<PlaceholderPage titleKey="nav.cascade" />}
-              />
-              <Route
-                path="/activity"
-                element={<PlaceholderPage titleKey="activity.title" />}
-              />
-              <Route
-                path="/history/:slug"
-                element={<PlaceholderPage titleKey="history.title" />}
-              />
-              <Route
-                path="/admin"
-                element={<PlaceholderPage titleKey="admin.title" />}
-              />
+              <Route index element={<StackOverviewPage />} />
+              <Route path="/layers/:slug" element={<LayerDetailPage />} />
+              <Route path="/layers/:slug/:item" element={<ItemDetailPage />} />
+              <Route path="/ideas" element={<IdeasPage />} />
+              <Route path="/cascade" element={<CascadePage />} />
+              <Route path="/activity" element={<ActivityPage />} />
+              <Route path="/history/:slug" element={<HistoryPage />} />
+              <Route path="/admin" element={<AdminPage />} />
             </Route>
           </Route>
 

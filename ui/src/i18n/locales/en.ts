@@ -43,6 +43,7 @@ const en = {
   // ── Navigation ──────────────────────────────────────────────────────
   nav: {
     appName: "Policy Factory",
+    home: "Home",
     stackOverview: "Stack Overview",
     ideas: "Ideas",
     cascade: "Cascade",
@@ -51,6 +52,11 @@ const en = {
     versionHistory: "Version History",
     logout: "Log out",
     settings: "Settings",
+    cascadeStatusIdle: "Idle",
+    cascadeStatusRunning: "Cascade running",
+    cascadeStatusPaused: "Cascade paused",
+    cascadeStatusFailed: "Cascade failed",
+    cascadeProcessing: "Processing {layer}",
   },
 
   // ── Authentication ──────────────────────────────────────────────────
@@ -84,12 +90,17 @@ const en = {
     layerTacticalObjectives: "Tactical Objectives",
     layerPolicies: "Policies",
     itemCount: "{count} items",
+    noItems: "No items",
     lastUpdated: "Updated {time}",
+    neverUpdated: "Not updated yet",
     feedbackMemoCount: "{count} pending memos",
     inputPlaceholder: "Submit new information or input…",
     submitButton: "Submit",
     cascadeRunning: "Cascade running",
     cascadeIdle: "System idle",
+    loadError: "Failed to load layer data",
+    retryButton: "Retry",
+    noNarrativeSummary: "No narrative summary yet",
   },
 
   // ── Layers ──────────────────────────────────────────────────────────
