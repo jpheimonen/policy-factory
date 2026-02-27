@@ -16,7 +16,13 @@ from fastapi.staticfiles import StaticFiles
 from policy_factory.auth import decode_access_token
 from policy_factory.data.init import get_data_dir, initialize_data_directory
 from policy_factory.server.deps import init_deps
-from policy_factory.server.routers import auth_router, health_router, users_router
+from policy_factory.server.routers import (
+    auth_router,
+    health_router,
+    history_router,
+    layers_router,
+    users_router,
+)
 
 if TYPE_CHECKING:
     from policy_factory.store import PolicyStore
@@ -64,6 +70,8 @@ def create_app(
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(users_router)
+    app.include_router(layers_router)
+    app.include_router(history_router)
 
     # --- WebSocket endpoint with JWT authentication ---
     @app.websocket("/ws")
