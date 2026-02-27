@@ -35,3 +35,6 @@ export type { IconButtonProps, IconButtonVariant, IconButtonSize } from "./IconB
 // Text
 export { Text } from "./Text.ts";
 export type { TextProps, TextVariant, TextSize } from "./Text.ts";
+
+// Markdown
+export { Markdown } from "./Markdown.tsx";
