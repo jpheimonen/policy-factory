@@ -7,12 +7,14 @@ from contextlib import asynccontextmanager
 from importlib.resources import files
 from typing import TYPE_CHECKING, AsyncGenerator
 
-from fastapi import FastAPI, HTTPException
+import jwt as pyjwt
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from policy_factory.auth import decode_access_token
 from policy_factory.server.deps import init_deps
-from policy_factory.server.routers import health_router
+from policy_factory.server.routers import auth_router, health_router, users_router
 
 if TYPE_CHECKING:
     from policy_factory.store import PolicyStore
@@ -40,6 +42,50 @@ def create_app(
 
     # --- Include API Routers ---
     app.include_router(health_router)
+    app.include_router(auth_router)
+    app.include_router(users_router)
+
+    # --- WebSocket endpoint with JWT authentication ---
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket) -> None:
+        """WebSocket endpoint with JWT authentication via query parameter.
+
+        The client passes the JWT as a query parameter: /ws?token=<jwt>
+        The server validates the token during the handshake and rejects
+        invalid connections.
+        """
+        token = websocket.query_params.get("token")
+
+        if not token:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        # Validate the token
+        try:
+            payload = decode_access_token(token)
+        except (pyjwt.ExpiredSignatureError, pyjwt.InvalidTokenError):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        # Verify the user still exists
+        if store is None:
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+            return
+
+        user = store.get_user_by_id(payload.user_id)
+        if user is None:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        # Accept the connection
+        await websocket.accept()
+
+        try:
+            while True:
+                # Keep the connection alive — receive and discard client messages
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
 
     # --- Static File Serving ---
 
