@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import path from "path";
 
 // Backend port: use VITE_BACKEND_PORT env var if set, otherwise default to 8765.
 // The `make dev` target auto-detects an available port and passes it here,
@@ -11,9 +12,14 @@ const backendPort = process.env.VITE_BACKEND_PORT || "8765";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
   test: {
     globals: true,
-    environment: "node",
+    environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
     // Setup files run before each test file
     setupFiles: ["./src/test-setup.ts"],
