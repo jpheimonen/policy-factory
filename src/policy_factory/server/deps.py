@@ -15,6 +15,7 @@ from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
 
 if TYPE_CHECKING:
+    from policy_factory.cascade.controller import CascadeController
     from policy_factory.events import EventEmitter
     from policy_factory.server.broadcast import BroadcastHandler
     from policy_factory.server.ws import ConnectionManager
@@ -27,6 +28,9 @@ _ws_manager: ConnectionManager | None = None
 _event_emitter: EventEmitter | None = None
 _broadcast_handler: BroadcastHandler | None = None
 _data_dir: Path | None = None
+
+# Cascade controller registry — maps cascade ID → controller instance
+_cascade_controllers: dict[str, CascadeController] = {}
 
 # Security scheme for Bearer token extraction
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -109,6 +113,58 @@ def get_event_emitter() -> EventEmitter:
     if _event_emitter is None:
         raise RuntimeError("Event emitter not initialized - call init_deps() first")
     return _event_emitter
+
+
+# ---------------------------------------------------------------------------
+# Cascade controller registry
+# ---------------------------------------------------------------------------
+
+
+def register_cascade_controller(
+    cascade_id: str, controller: CascadeController
+) -> None:
+    """Register an active cascade controller.
+
+    Args:
+        cascade_id: The cascade run ID.
+        controller: The CascadeController instance.
+    """
+    _cascade_controllers[cascade_id] = controller
+
+
+def get_cascade_controller(cascade_id: str) -> CascadeController | None:
+    """Get the controller for a cascade, or None if not found.
+
+    Args:
+        cascade_id: The cascade run ID.
+
+    Returns:
+        The CascadeController, or None if not registered.
+    """
+    return _cascade_controllers.get(cascade_id)
+
+
+def unregister_cascade_controller(cascade_id: str) -> None:
+    """Remove a controller from the registry.
+
+    Args:
+        cascade_id: The cascade run ID.
+    """
+    _cascade_controllers.pop(cascade_id, None)
+
+
+def get_active_cascade_id() -> str | None:
+    """Return the ID of the currently running/paused cascade, or None.
+
+    Returns:
+        The cascade ID, or None if no cascade is active.
+    """
+    for cid, controller in _cascade_controllers.items():
+        from policy_factory.cascade.controller import CascadeState
+
+        if controller.state in (CascadeState.RUNNING, CascadeState.PAUSED):
+            return cid
+    return None
 
 
 async def get_current_user(

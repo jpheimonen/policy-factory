@@ -28,6 +28,53 @@ CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_layer_slug ON events(layer_slug);
 CREATE INDEX IF NOT EXISTS idx_events_category ON events(category);
+
+CREATE TABLE IF NOT EXISTS cascade_runs (
+    id TEXT PRIMARY KEY,
+    trigger_source TEXT NOT NULL,
+    starting_layer TEXT NOT NULL,
+    current_layer TEXT NOT NULL,
+    current_step TEXT NOT NULL DEFAULT 'generation',
+    status TEXT NOT NULL DEFAULT 'running',
+    error_message TEXT,
+    error_layer TEXT,
+    context TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_cascade_runs_status ON cascade_runs(status);
+CREATE INDEX IF NOT EXISTS idx_cascade_runs_created_at ON cascade_runs(created_at);
+
+CREATE TABLE IF NOT EXISTS cascade_queue (
+    id TEXT PRIMARY KEY,
+    trigger_source TEXT NOT NULL,
+    starting_layer TEXT NOT NULL,
+    context TEXT,
+    queued_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cascade_queue_queued_at ON cascade_queue(queued_at);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY,
+    cascade_id TEXT,
+    agent_type TEXT NOT NULL,
+    agent_label TEXT NOT NULL,
+    model TEXT NOT NULL,
+    target_layer TEXT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    success INTEGER,
+    error_message TEXT,
+    cost_usd REAL,
+    output_text TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_cascade_id ON agent_runs(cascade_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_type ON agent_runs(agent_type);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_target_layer ON agent_runs(target_layer);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_started_at ON agent_runs(started_at);
 """
 
 
