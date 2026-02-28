@@ -1,0 +1,60 @@
+# Version control
+.git/
+.gitignore
+
+# Dependencies (rebuilt inside Docker)
+node_modules/
+ui/node_modules/
+.venv/
+venv/
+
+# Built frontend assets (rebuilt inside Docker)
+src/policy_factory/static/dist/
+
+# Data directory (mounted as volume, not baked into image)
+data/
+
+# Environment files (secrets passed via env vars, not baked into image)
+.env
+.env.*
+!env.example
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# SQLite database files
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Docker-specific DB directory
+.docker-db/
+
+# Agent memories (CI tooling)
+agent-memories/
+
+# Task specs
+tasks/

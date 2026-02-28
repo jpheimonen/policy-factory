@@ -107,6 +107,7 @@ interface CascadeStatusFull {
   cascade_id: string | null;
   current_layer: string | null;
   current_step: string | null;
+  starting_layer: string | null;
   trigger_source: string | null;
   started_at: string | null;
   error_message: string | null;

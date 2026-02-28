@@ -633,7 +633,7 @@ function IdeaDetailView({
             $variant="secondary"
             $size="sm"
             onClick={onReEvaluate}
-            disabled={reEvaluating || detail.status === "evaluating"}
+            disabled={reEvaluating}
             $loading={reEvaluating}
           >
             {reEvaluating

@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -58,7 +59,13 @@ Examples:
   policy-factory server --host 0.0.0.0      Bind to all interfaces
 
 Environment:
-  ANTHROPIC_API_KEY   Required for Claude Code SDK (agent operations)
+  ANTHROPIC_API_KEY              Required for Claude Code SDK (agent operations)
+  POLICY_FACTORY_HOST            Host to bind to (overrides --host default)
+  POLICY_FACTORY_PORT            Port to bind to (overrides --port default)
+  POLICY_FACTORY_DB_PATH         Path to SQLite database file
+  POLICY_FACTORY_DATA_DIR        Path to data directory
+  POLICY_FACTORY_HEARTBEAT_INTERVAL  Heartbeat interval in seconds (default: 14400)
+  POLICY_FACTORY_HEARTBEAT_ENABLED   Enable heartbeat (default: true)
         """,
     )
 
@@ -69,10 +76,13 @@ Environment:
         "server",
         help="Start web UI server",
     )
+    default_host = os.environ.get("POLICY_FACTORY_HOST", "127.0.0.1")
+    default_port = int(os.environ.get("POLICY_FACTORY_PORT", "8765"))
+
     server_parser.add_argument(
         "--host",
-        default="127.0.0.1",
-        help="Host to bind to (default: 127.0.0.1)",
+        default=default_host,
+        help=f"Host to bind to (default: {default_host})",
     )
 
     # Custom action to track if port was explicitly specified
@@ -90,9 +100,9 @@ Environment:
     server_parser.add_argument(
         "--port",
         type=int,
-        default=8765,
+        default=default_port,
         action=PortAction,
-        help="Port to bind to (default: 8765, auto-increments if busy)",
+        help=f"Port to bind to (default: {default_port}, auto-increments if busy)",
     )
     # Default flag for when port is not explicitly specified
     server_parser.set_defaults(port_explicit=False)

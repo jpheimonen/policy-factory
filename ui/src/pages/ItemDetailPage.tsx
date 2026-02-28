@@ -549,7 +549,7 @@ export function ItemDetailPage() {
             </FormField>
 
             {/* References — read-only in edit mode */}
-            {fm.references && (
+            {fm.references != null && (
               <FormField
                 label={t("items.crossReferences")}
                 helpText={t("items.readOnlyField")}
