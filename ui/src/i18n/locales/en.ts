@@ -206,6 +206,9 @@ const en = {
 
   // ── Cascade ─────────────────────────────────────────────────────────
   cascade: {
+    // Page
+    title: "Live Cascade Viewer",
+    // Status labels
     statusIdle: "Idle",
     statusRunning: "Running",
     statusPaused: "Paused",
@@ -213,20 +216,61 @@ const en = {
     statusFailed: "Failed",
     statusCancelled: "Cancelled",
     statusQueued: "Queued",
+    // Step labels
     stepGeneration: "Generation",
     stepCritics: "Critics",
     stepSynthesis: "Synthesis",
+    // Layer processing descriptions
+    generatingLayer: "Generating {layer}",
+    runningCritics: "Running critics for {layer}",
+    synthesizingLayer: "Synthesizing {layer}",
+    // Control buttons
+    pauseButton: "Pause",
     resumeButton: "Resume",
     cancelButton: "Cancel Cascade",
+    confirmCancel: "Confirm Cancel",
+    pausing: "Pausing\u2026",
+    resuming: "Resuming\u2026",
+    cancelling: "Cancelling\u2026",
+    // Queue section
     queueHeading: "Cascade Queue",
     queueEmpty: "No cascades queued",
     queuePosition: "Position {position} in queue",
+    queueEntryDescription: "{source} \u2014 from {layer}",
+    removeFromQueue: "Remove",
+    // Error display
     errorDisplay: "Cascade paused due to error",
+    errorAtLayer: "Error at {layer}",
+    errorAtStep: "Failed during {step}",
+    errorMessage: "Error: {message}",
+    // Running state
     currentAgent: "Running: {agent}",
     processingLayer: "Processing {layer}",
     progress: "Step {current} of {total}",
+    // Trigger sources
     triggerSource: "Triggered by {source}",
+    triggerUserInput: "user input",
+    triggerLayerRefresh: "layer refresh",
+    triggerHeartbeat: "heartbeat",
+    triggerSeed: "seed",
+    triggerUnknown: "system",
+    // Timing
+    startedAt: "Started {time}",
+    completedAt: "Completed {time}",
+    duration: "Duration: {duration}",
+    queuedAt: "Queued {time}",
+    // Idle state
     noActiveCascade: "No active cascade",
+    idleDescription: "Submit input on the home page or use the seed endpoint to start a cascade.",
+    noCascadeHistory: "No cascades have been run yet",
+    // History section
+    historyHeading: "Recent Cascades",
+    historyEmpty: "No cascade history",
+    lastCascadeSummary: "Last Cascade",
+    layersProcessed: "{count} layers processed",
+    // Streaming text
+    waitingForOutput: "Waiting for agent output\u2026",
+    streamingPaused: "Streaming paused \u2014 cascade is paused",
   },
 
   // ── Heartbeat ───────────────────────────────────────────────────────
