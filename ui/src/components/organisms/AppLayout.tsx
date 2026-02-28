@@ -11,6 +11,7 @@
 import { Outlet } from "react-router-dom";
 import { WebSocketProvider } from "@/hooks/WebSocketProvider.tsx";
 import { Navigation } from "./Navigation.tsx";
+import { InputPanel } from "./InputPanel.tsx";
 import styled from "styled-components";
 
 const LayoutWrapper = styled.div`
@@ -32,6 +33,7 @@ export function AppLayout() {
         <MainContent>
           <Outlet />
         </MainContent>
+        <InputPanel />
       </LayoutWrapper>
     </WebSocketProvider>
   );
