@@ -10,6 +10,7 @@ from .agent_run import AgentRun, AgentRunStoreMixin
 from .auth import AuthStoreMixin, User, UserPublic
 from .base import BaseStore
 from .cascade import CascadeRun, CascadeStoreMixin, QueueEntry
+from .critic_result import CriticResult, CriticResultMixin, SynthesisResult
 from .events import EventStoreMixin, StoredEvent
 from .schema import get_default_db_path, init_db
 
@@ -20,6 +21,7 @@ class PolicyStore(
     EventStoreMixin,
     CascadeStoreMixin,
     AgentRunStoreMixin,
+    CriticResultMixin,
 ):
     """SQLite-backed store for Policy Factory.
 
@@ -29,6 +31,7 @@ class PolicyStore(
     - EventStoreMixin: Event persistence and retrieval
     - CascadeStoreMixin: Cascade run tracking, lock, and queue
     - AgentRunStoreMixin: Agent invocation history
+    - CriticResultMixin: Critic and synthesis result storage
 
     Additional mixins will be added in later steps as new
     feature domains are built (ideas, heartbeat, feedback memos, etc.).
@@ -44,9 +47,11 @@ class PolicyStore(
 __all__ = [
     "AgentRun",
     "CascadeRun",
+    "CriticResult",
     "PolicyStore",
     "QueueEntry",
     "StoredEvent",
+    "SynthesisResult",
     "User",
     "UserPublic",
     "get_default_db_path",

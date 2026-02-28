@@ -75,6 +75,43 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_cascade_id ON agent_runs(cascade_id);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_type ON agent_runs(agent_type);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_target_layer ON agent_runs(target_layer);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_started_at ON agent_runs(started_at);
+
+CREATE TABLE IF NOT EXISTS critic_results (
+    id TEXT PRIMARY KEY,
+    cascade_id TEXT,
+    layer_slug TEXT,
+    idea_id TEXT,
+    archetype TEXT NOT NULL,
+    assessment_text TEXT NOT NULL DEFAULT '',
+    structured_assessment TEXT,
+    agent_run_id TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_critic_results_cascade_layer
+    ON critic_results(cascade_id, layer_slug);
+CREATE INDEX IF NOT EXISTS idx_critic_results_idea_id
+    ON critic_results(idea_id);
+CREATE INDEX IF NOT EXISTS idx_critic_results_created_at
+    ON critic_results(created_at);
+
+CREATE TABLE IF NOT EXISTS synthesis_results (
+    id TEXT PRIMARY KEY,
+    cascade_id TEXT,
+    layer_slug TEXT,
+    idea_id TEXT,
+    synthesis_text TEXT NOT NULL DEFAULT '',
+    structured_synthesis TEXT,
+    agent_run_id TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_synthesis_results_cascade_layer
+    ON synthesis_results(cascade_id, layer_slug);
+CREATE INDEX IF NOT EXISTS idx_synthesis_results_idea_id
+    ON synthesis_results(idea_id);
+CREATE INDEX IF NOT EXISTS idx_synthesis_results_created_at
+    ON synthesis_results(created_at);
 """
 
 
