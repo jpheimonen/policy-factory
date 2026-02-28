@@ -1,8 +1,6 @@
 """Tests for the critic result store mixin."""
 
-import json
 
-import pytest
 
 from policy_factory.store import PolicyStore
 from policy_factory.store.critic_result import CriticResult, SynthesisResult

@@ -12,6 +12,7 @@ from .base import BaseStore
 from .cascade import CascadeRun, CascadeStoreMixin, QueueEntry
 from .critic_result import CriticResult, CriticResultMixin, SynthesisResult
 from .events import EventStoreMixin, StoredEvent
+from .feedback_memo import FeedbackMemo, FeedbackMemoMixin
 from .schema import get_default_db_path, init_db
 
 
@@ -22,6 +23,7 @@ class PolicyStore(
     CascadeStoreMixin,
     AgentRunStoreMixin,
     CriticResultMixin,
+    FeedbackMemoMixin,
 ):
     """SQLite-backed store for Policy Factory.
 
@@ -32,9 +34,10 @@ class PolicyStore(
     - CascadeStoreMixin: Cascade run tracking, lock, and queue
     - AgentRunStoreMixin: Agent invocation history
     - CriticResultMixin: Critic and synthesis result storage
+    - FeedbackMemoMixin: Bidirectional feedback between layers
 
     Additional mixins will be added in later steps as new
-    feature domains are built (ideas, heartbeat, feedback memos, etc.).
+    feature domains are built (ideas, heartbeat, etc.).
 
     This is the only store class that consumers import and instantiate.
     """
@@ -48,6 +51,7 @@ __all__ = [
     "AgentRun",
     "CascadeRun",
     "CriticResult",
+    "FeedbackMemo",
     "PolicyStore",
     "QueueEntry",
     "StoredEvent",

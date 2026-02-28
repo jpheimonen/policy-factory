@@ -112,6 +112,25 @@ CREATE INDEX IF NOT EXISTS idx_synthesis_results_idea_id
     ON synthesis_results(idea_id);
 CREATE INDEX IF NOT EXISTS idx_synthesis_results_created_at
     ON synthesis_results(created_at);
+
+CREATE TABLE IF NOT EXISTS feedback_memos (
+    id TEXT PRIMARY KEY,
+    source_layer TEXT NOT NULL,
+    target_layer TEXT NOT NULL,
+    cascade_id TEXT,
+    content TEXT NOT NULL,
+    referenced_items TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_memos_target_status
+    ON feedback_memos(target_layer, status);
+CREATE INDEX IF NOT EXISTS idx_feedback_memos_cascade_id
+    ON feedback_memos(cascade_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_memos_created_at
+    ON feedback_memos(created_at);
 """
 
 

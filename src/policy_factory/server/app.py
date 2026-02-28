@@ -21,9 +21,12 @@ from policy_factory.server.deps import init_deps
 from policy_factory.server.routers import (
     activity_router,
     auth_router,
+    cascade_router,
+    feedback_router,
     health_router,
     history_router,
     layers_router,
+    seed_router,
     users_router,
 )
 from policy_factory.server.ws import ConnectionManager
@@ -99,6 +102,9 @@ def create_app(
     app.include_router(layers_router)
     app.include_router(history_router)
     app.include_router(activity_router)
+    app.include_router(cascade_router)
+    app.include_router(seed_router)
+    app.include_router(feedback_router)
 
     # --- WebSocket endpoint with JWT authentication ---
     @app.websocket("/ws")

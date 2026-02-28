@@ -22,7 +22,8 @@ from policy_factory.data.layers import (
     resolve_references,
     write_item,
 )
-from policy_factory.server.deps import get_current_user, get_data_dir
+from policy_factory.server.deps import get_current_user, get_data_dir, get_store
+from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
 
 logger = logging.getLogger(__name__)
@@ -180,6 +181,7 @@ class SummaryResponse(BaseModel):
 async def list_layers(
     data_dir: Annotated[Path, Depends(get_data_dir)],
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(get_store)],
 ) -> list[LayerSummaryResponse]:
     """List all 5 layers with metadata.
 
@@ -202,6 +204,9 @@ async def list_layers(
         narrative = read_narrative(data_dir, layer.slug)
         narrative_preview = narrative[:200] if narrative else ""
 
+        # Get actual pending feedback memo count
+        pending_count = store.get_pending_memo_count(layer.slug)
+
         result.append(
             LayerSummaryResponse(
                 slug=layer.slug,
@@ -210,7 +215,7 @@ async def list_layers(
                 item_count=len(items),
                 last_updated=last_updated,
                 narrative_preview=narrative_preview,
-                pending_feedback_count=0,  # Hardcoded until step 017
+                pending_feedback_count=pending_count,
             )
         )
 
