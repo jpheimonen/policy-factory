@@ -1,4 +1,5 @@
-.PHONY: build install clean dev run docker-build docker-run docker-stop
+.PHONY: build install clean dev run docker-build docker-run docker-stop \
+       test test-unit test-integration test-frontend test-e2e test-all
 
 DOCKER_IMAGE := policy-factory
 DOCKER_CONTAINER := policy-factory
@@ -69,3 +70,38 @@ docker-stop:
 	docker stop $(DOCKER_CONTAINER) 2>/dev/null || true
 	docker rm $(DOCKER_CONTAINER) 2>/dev/null || true
 	@echo "Policy Factory container stopped."
+
+# --- Test targets ---
+
+# Run the full backend Python test suite
+test:
+	uv run python -m pytest tests/ -v
+
+# Run only backend unit tests (exclude integration tests)
+test-unit:
+	uv run python -m pytest tests/ -v --ignore=tests/test_integration_auth.py \
+		--ignore=tests/test_integration_data_layer.py \
+		--ignore=tests/test_integration_first_run.py \
+		--ignore=tests/test_integration_cascade.py \
+		--ignore=tests/test_integration_critic.py \
+		--ignore=tests/test_integration_ideas.py \
+		--ignore=tests/test_integration_heartbeat.py \
+		--ignore=tests/test_integration_classifier.py \
+		--ignore=tests/test_integration_websocket.py \
+		--ignore=tests/test_integration_activity.py \
+		--ignore=tests/test_integration_frontend_backend.py
+
+# Run only backend integration tests
+test-integration:
+	uv run python -m pytest tests/test_integration_*.py -v
+
+# Run frontend vitest unit/component tests
+test-frontend:
+	cd ui && bun run test
+
+# Run Playwright browser E2E tests (assumes dev server is running)
+test-e2e:
+	cd ui && bun run test:e2e
+
+# Run all tests in sequence: backend, frontend, E2E
+test-all: test test-frontend test-e2e
