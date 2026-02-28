@@ -254,6 +254,13 @@ export function LayerDetailPage() {
         </HeaderLeft>
         <HeaderRight>
           <Button
+            $variant="ghost"
+            $size="sm"
+            onClick={() => navigate(`/history/${slug}`)}
+          >
+            {t("layers.versionHistory")}
+          </Button>
+          <Button
             $variant="secondary"
             $size="sm"
             $loading={refreshing}

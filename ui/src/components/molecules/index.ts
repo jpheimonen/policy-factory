@@ -12,3 +12,5 @@ export { FormField } from "./FormField.tsx";
 export type { FormFieldProps } from "./FormField.tsx";
 export { ConfirmModal } from "./ConfirmModal.tsx";
 export type { ConfirmModalProps } from "./ConfirmModal.tsx";
+export { EventItem } from "./EventItem.tsx";
+export type { EventItemProps } from "./EventItem.tsx";
