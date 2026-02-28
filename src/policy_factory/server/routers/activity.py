@@ -20,6 +20,18 @@ from policy_factory.store.auth import UserPublic
 router = APIRouter(prefix="/api/activity", tags=["activity"])
 
 
+def _serialize_event(e: Any) -> dict[str, Any]:
+    """Convert a stored event to its API response dict."""
+    return {
+        "id": e.id,
+        "event_type": e.event_type,
+        "timestamp": e.timestamp.isoformat(),
+        "data": e.data,
+        "layer_slug": e.layer_slug,
+        "category": e.category,
+    }
+
+
 @router.get("/")
 async def get_activity(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
@@ -44,17 +56,7 @@ async def get_activity(
         category=category,
     )
     return {
-        "events": [
-            {
-                "id": e.id,
-                "event_type": e.event_type,
-                "timestamp": e.timestamp.isoformat(),
-                "data": e.data,
-                "layer_slug": e.layer_slug,
-                "category": e.category,
-            }
-            for e in events
-        ],
+        "events": [_serialize_event(e) for e in events],
         "limit": limit,
         "offset": offset,
     }
@@ -83,17 +85,7 @@ async def replay_events(
         limit=500,
     )
     return {
-        "events": [
-            {
-                "id": e.id,
-                "event_type": e.event_type,
-                "timestamp": e.timestamp.isoformat(),
-                "data": e.data,
-                "layer_slug": e.layer_slug,
-                "category": e.category,
-            }
-            for e in events
-        ],
+        "events": [_serialize_event(e) for e in events],
         "since_id": since_id,
         "overflow": len(events) >= 500,
     }

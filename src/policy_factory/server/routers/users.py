@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import sqlite3
 from typing import Annotated
 
@@ -12,15 +11,13 @@ from pydantic import BaseModel
 
 from policy_factory.auth import hash_password
 from policy_factory.server.deps import get_store, require_admin
+from policy_factory.server.validation import validate_email, validate_password
 from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
-
-# Minimum password length (same as auth router)
-MIN_PASSWORD_LENGTH = 8
 
 
 # --- Request/Response Models ---
@@ -86,29 +83,9 @@ async def create_user(
     are always regular users — no way to create additional admins
     via this endpoint.
     """
-    # Validate email
-    if not body.email or not body.email.strip():
-        raise HTTPException(
-            status_code=422,
-            detail="Email is required",
-        )
-    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", body.email.strip()):
-        raise HTTPException(
-            status_code=422,
-            detail="Invalid email format",
-        )
-
-    # Validate password
-    if not body.password:
-        raise HTTPException(
-            status_code=422,
-            detail="Password is required",
-        )
-    if len(body.password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
-        )
+    # Validate inputs
+    validate_email(body.email)
+    validate_password(body.password)
 
     # Check for duplicate email
     if store.email_exists(body.email):

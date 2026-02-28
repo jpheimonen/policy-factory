@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import sqlite3
 from typing import Annotated
 
@@ -19,6 +18,7 @@ from policy_factory.auth import (
     verify_password,
 )
 from policy_factory.server.deps import get_current_user, get_store
+from policy_factory.server.validation import validate_email, validate_password
 from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
 
@@ -29,8 +29,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Bearer scheme that doesn't auto-error (for optional auth on register)
 _optional_bearer = HTTPBearer(auto_error=False)
 
-# Minimum password length
-MIN_PASSWORD_LENGTH = 8
 
 
 # --- Request/Response Models ---
@@ -82,33 +80,6 @@ def _user_info(user: UserPublic) -> UserInfo:
     )
 
 
-def _validate_email(email: str) -> None:
-    """Basic email validation — must contain @ and not be empty."""
-    if not email or not email.strip():
-        raise HTTPException(
-            status_code=422,
-            detail="Email is required",
-        )
-    # Simple check: must have @ with something on both sides
-    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email.strip()):
-        raise HTTPException(
-            status_code=422,
-            detail="Invalid email format",
-        )
-
-
-def _validate_password(password: str) -> None:
-    """Password validation — minimum length, not empty."""
-    if not password:
-        raise HTTPException(
-            status_code=422,
-            detail="Password is required",
-        )
-    if len(password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
-        )
 
 
 def _try_get_user_from_token(
@@ -231,8 +202,8 @@ async def register(
             )
 
     # Validate inputs
-    _validate_email(body.email)
-    _validate_password(body.password)
+    validate_email(body.email)
+    validate_password(body.password)
 
     # Check for duplicate email
     if store.email_exists(body.email):

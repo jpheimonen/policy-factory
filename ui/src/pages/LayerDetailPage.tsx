@@ -18,7 +18,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "@/i18n/index.ts";
 import { useLayerStore, isValidLayerSlug } from "@/stores/layerStore.ts";
 import type { LayerItem, FeedbackMemo } from "@/stores/layerStore.ts";
+import { LAYER_NAME_KEYS } from "@/lib/layerConstants.ts";
 import { apiRequest } from "@/lib/apiClient.ts";
+import { formatRelativeTime } from "@/lib/timeUtils.ts";
 import { Badge, Button, Markdown } from "@/components/atoms/index.ts";
 import { LoadingState, ErrorState, EmptyState } from "@/components/molecules/index.ts";
 import {
@@ -45,42 +47,6 @@ import {
   CriticPlaceholder,
   CriticPlaceholderText,
 } from "./LayerDetailPage.styles.ts";
-
-// ── Layer name translation key lookup ────────────────────────────────
-
-const LAYER_NAME_KEYS: Record<string, string> = {
-  values: "stackOverview.layerValues",
-  "situational-awareness": "stackOverview.layerSituationalAwareness",
-  "strategic-objectives": "stackOverview.layerStrategicObjectives",
-  "tactical-objectives": "stackOverview.layerTacticalObjectives",
-  policies: "stackOverview.layerPolicies",
-};
-
-// ── Relative time helper ─────────────────────────────────────────────
-
-function formatRelativeTime(isoTimestamp: string): string {
-  if (!isoTimestamp) return "";
-
-  try {
-    const date = new Date(isoTimestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSeconds = Math.floor(diffMs / 1000);
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    const diffHours = Math.floor(diffMinutes / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffSeconds < 60) return "just now";
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return "yesterday";
-    if (diffDays < 30) return `${diffDays}d ago`;
-
-    return date.toLocaleDateString();
-  } catch {
-    return "";
-  }
-}
 
 // ── Item slug helper ─────────────────────────────────────────────────
 

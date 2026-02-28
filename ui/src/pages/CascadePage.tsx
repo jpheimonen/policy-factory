@@ -18,7 +18,9 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useTranslation } from "@/i18n/index.ts";
 import { useCascadeStore } from "@/stores/cascadeStore.ts";
 import type { CascadeStep } from "@/stores/cascadeStore.ts";
+import { LAYER_NAME_KEYS } from "@/lib/layerConstants.ts";
 import { apiRequest } from "@/lib/apiClient.ts";
+import { formatRelativeTime } from "@/lib/timeUtils.ts";
 import { Badge, Button, Text } from "@/components/atoms/index.ts";
 import { EmptyState } from "@/components/molecules/index.ts";
 import { useAutoScroll } from "@/hooks/useAutoScroll.ts";
@@ -80,15 +82,6 @@ const LAYER_ORDER: readonly string[] = [
   "tactical-objectives",
   "policies",
 ];
-
-/** Layer name i18n key lookup */
-const LAYER_NAME_KEYS: Record<string, string> = {
-  values: "stackOverview.layerValues",
-  "situational-awareness": "stackOverview.layerSituationalAwareness",
-  "strategic-objectives": "stackOverview.layerStrategicObjectives",
-  "tactical-objectives": "stackOverview.layerTacticalObjectives",
-  policies: "stackOverview.layerPolicies",
-};
 
 /** Steps in order for progress tracking */
 const STEP_ORDER: CascadeStep[] = ["generation", "critics", "synthesis"];
@@ -166,21 +159,6 @@ function getLayersInCascade(startingLayer: string): string[] {
   const startIdx = LAYER_ORDER.indexOf(startingLayer);
   if (startIdx === -1) return [...LAYER_ORDER];
   return LAYER_ORDER.slice(startIdx) as string[];
-}
-
-function formatRelativeTime(isoDate: string): string {
-  const date = new Date(isoDate);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}h ago`;
-  const diffDay = Math.floor(diffHour / 24);
-  return `${diffDay}d ago`;
 }
 
 function formatDuration(start: string, end: string): string {

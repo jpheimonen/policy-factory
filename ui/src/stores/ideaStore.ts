@@ -85,25 +85,8 @@ export interface IdeaDetail {
 
 const PAGE_SIZE = 20;
 
-/** Canonical critic order */
-export const CRITIC_ORDER = [
-  "realist",
-  "liberal-institutionalist",
-  "nationalist-conservative",
-  "social-democratic",
-  "libertarian",
-  "green-ecological",
-] as const;
-
-/** Map critic archetype slug to i18n key */
-export const CRITIC_DISPLAY_KEYS: Record<string, string> = {
-  realist: "critics.realist",
-  "liberal-institutionalist": "critics.liberalInstitutionalist",
-  "nationalist-conservative": "critics.nationalistConservative",
-  "social-democratic": "critics.socialDemocratic",
-  libertarian: "critics.libertarian",
-  "green-ecological": "critics.greenEcological",
-};
+// Re-export critic constants from the shared module
+export { CRITIC_ORDER, CRITIC_DISPLAY_KEYS } from "@/lib/layerConstants.ts";
 
 // ── Store definition ─────────────────────────────────────────────────
 

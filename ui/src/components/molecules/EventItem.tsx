@@ -18,6 +18,8 @@
  */
 import { useMemo } from "react";
 import { useTranslation } from "@/i18n/index.ts";
+import { LAYER_NAME_KEYS } from "@/lib/layerConstants.ts";
+import { formatRelativeTime } from "@/lib/timeUtils.ts";
 import { Badge } from "@/components/atoms/index.ts";
 import type { ActivityEvent } from "@/stores/activityStore.ts";
 import type { EventCategory } from "@/types/events.ts";
@@ -34,26 +36,7 @@ import {
   LayerBadge,
 } from "./EventItem.styles.ts";
 
-// ── Layer display names ──────────────────────────────────────────────
-
-const LAYER_DISPLAY_NAMES: Record<string, string> = {
-  values: "stackOverview.layerValues",
-  "situational-awareness": "stackOverview.layerSituationalAwareness",
-  "strategic-objectives": "stackOverview.layerStrategicObjectives",
-  "tactical-objectives": "stackOverview.layerTacticalObjectives",
-  policies: "stackOverview.layerPolicies",
-};
-
-// ── Critic display name keys ─────────────────────────────────────────
-
-const CRITIC_DISPLAY_KEYS: Record<string, string> = {
-  realist: "critics.realist",
-  "liberal-institutionalist": "critics.liberalInstitutionalist",
-  "nationalist-conservative": "critics.nationalistConservative",
-  "social-democratic": "critics.socialDemocratic",
-  libertarian: "critics.libertarian",
-  "green-ecological": "critics.greenEcological",
-};
+import { CRITIC_DISPLAY_KEYS } from "@/lib/layerConstants.ts";
 
 // ── Event icons ──────────────────────────────────────────────────────
 
@@ -154,31 +137,7 @@ function getCategoryLabel(
   }
 }
 
-// ── Relative time formatting ─────────────────────────────────────────
-
-function formatRelativeTime(isoTimestamp: string): string {
-  if (!isoTimestamp) return "";
-
-  try {
-    const date = new Date(isoTimestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSeconds = Math.floor(diffMs / 1000);
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    const diffHours = Math.floor(diffMinutes / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffSeconds < 60) return "just now";
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return "yesterday";
-    if (diffDays < 30) return `${diffDays}d ago`;
-
-    return date.toLocaleDateString();
-  } catch {
-    return "";
-  }
-}
+// ── Time formatting helpers ──────────────────────────────────────────
 
 function formatFullTimestamp(isoTimestamp: string): string {
   if (!isoTimestamp) return "";
@@ -207,7 +166,7 @@ export function EventItem({ event, isNew = false }: EventItemProps) {
 
   const layerName = useMemo(() => {
     if (!event.layer_slug) return null;
-    const key = LAYER_DISPLAY_NAMES[event.layer_slug];
+    const key = LAYER_NAME_KEYS[event.layer_slug];
     return key ? t(key) : event.layer_slug;
   }, [event.layer_slug, t]);
 
@@ -220,7 +179,7 @@ export function EventItem({ event, isNew = false }: EventItemProps) {
         const startingLayer =
           data.starting_layer as string | undefined;
         const lName = startingLayer
-          ? t(LAYER_DISPLAY_NAMES[startingLayer] ?? startingLayer)
+          ? t(LAYER_NAME_KEYS[startingLayer] ?? startingLayer)
           : "";
         return t("activity.cascadeStarted", { layerName: lName });
       }
@@ -230,7 +189,7 @@ export function EventItem({ event, isNew = false }: EventItemProps) {
         const failedLayer =
           data.failed_layer as string | undefined;
         const fName = failedLayer
-          ? t(LAYER_DISPLAY_NAMES[failedLayer] ?? failedLayer)
+          ? t(LAYER_NAME_KEYS[failedLayer] ?? failedLayer)
           : "";
         const step = (data.failed_step as string) ?? "";
         return t("activity.cascadeFailed", { layerName: fName, step });
@@ -239,7 +198,7 @@ export function EventItem({ event, isNew = false }: EventItemProps) {
         const pausedLayer =
           data.paused_layer as string | undefined;
         const pName = pausedLayer
-          ? t(LAYER_DISPLAY_NAMES[pausedLayer] ?? pausedLayer)
+          ? t(LAYER_NAME_KEYS[pausedLayer] ?? pausedLayer)
           : "";
         const pStep = (data.paused_step as string) ?? "";
         return t("activity.cascadePaused", { layerName: pName, step: pStep });
@@ -257,21 +216,21 @@ export function EventItem({ event, isNew = false }: EventItemProps) {
       case "layer_generation_started": {
         const lSlug = data.layer_slug as string | undefined;
         const ln = lSlug
-          ? t(LAYER_DISPLAY_NAMES[lSlug] ?? lSlug)
+          ? t(LAYER_NAME_KEYS[lSlug] ?? lSlug)
           : "";
         return t("activity.layerGenerationStarted", { layerName: ln });
       }
       case "layer_generation_completed": {
         const lSlug = data.layer_slug as string | undefined;
         const ln = lSlug
-          ? t(LAYER_DISPLAY_NAMES[lSlug] ?? lSlug)
+          ? t(LAYER_NAME_KEYS[lSlug] ?? lSlug)
           : "";
         return t("activity.layerGenerationCompleted", { layerName: ln });
       }
       case "critic_started": {
         const lSlug = data.layer_slug as string | undefined;
         const ln = lSlug
-          ? t(LAYER_DISPLAY_NAMES[lSlug] ?? lSlug)
+          ? t(LAYER_NAME_KEYS[lSlug] ?? lSlug)
           : "";
         const critic = data.critic_archetype as string | undefined;
         const cName = critic
@@ -285,7 +244,7 @@ export function EventItem({ event, isNew = false }: EventItemProps) {
       case "critic_completed": {
         const lSlug = data.layer_slug as string | undefined;
         const ln = lSlug
-          ? t(LAYER_DISPLAY_NAMES[lSlug] ?? lSlug)
+          ? t(LAYER_NAME_KEYS[lSlug] ?? lSlug)
           : "";
         const critic = data.critic_archetype as string | undefined;
         const cName = critic
@@ -299,14 +258,14 @@ export function EventItem({ event, isNew = false }: EventItemProps) {
       case "synthesis_started": {
         const lSlug = data.layer_slug as string | undefined;
         const ln = lSlug
-          ? t(LAYER_DISPLAY_NAMES[lSlug] ?? lSlug)
+          ? t(LAYER_NAME_KEYS[lSlug] ?? lSlug)
           : "";
         return t("activity.synthesisStarted", { layerName: ln });
       }
       case "synthesis_completed": {
         const lSlug = data.layer_slug as string | undefined;
         const ln = lSlug
-          ? t(LAYER_DISPLAY_NAMES[lSlug] ?? lSlug)
+          ? t(LAYER_NAME_KEYS[lSlug] ?? lSlug)
           : "";
         return t("activity.synthesisCompleted", { layerName: ln });
       }

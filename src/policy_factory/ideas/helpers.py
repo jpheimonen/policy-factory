@@ -18,6 +18,15 @@ from policy_factory.data.layers import LAYERS, list_items, read_narrative
 
 logger = logging.getLogger(__name__)
 
+# Maps layer slugs to template variable names used in prompts.
+_SLUG_TO_VAR: dict[str, str] = {
+    "values": "values_summary",
+    "situational-awareness": "sa_summary",
+    "strategic-objectives": "strategic_summary",
+    "tactical-objectives": "tactical_summary",
+    "policies": "policies_summary",
+}
+
 
 def gather_stack_summary(data_dir: Path) -> dict[str, str]:
     """Gather brief summaries of all 5 layers.
@@ -43,18 +52,10 @@ def gather_stack_summary(data_dir: Path) -> dict[str, str]:
     Returns:
         Dict of template variable name → summary text.
     """
-    slug_to_var = {
-        "values": "values_summary",
-        "situational-awareness": "sa_summary",
-        "strategic-objectives": "strategic_summary",
-        "tactical-objectives": "tactical_summary",
-        "policies": "policies_summary",
-    }
-
     summaries: dict[str, str] = {}
 
     for layer in LAYERS:
-        var_name = slug_to_var.get(layer.slug, layer.slug)
+        var_name = _SLUG_TO_VAR.get(layer.slug, layer.slug)
         parts: list[str] = []
 
         # Narrative summary
@@ -100,14 +101,7 @@ def gather_stack_summary_text(data_dir: Path) -> str:
     parts: list[str] = []
 
     for layer in LAYERS:
-        slug_to_var = {
-            "values": "values_summary",
-            "situational-awareness": "sa_summary",
-            "strategic-objectives": "strategic_summary",
-            "tactical-objectives": "tactical_summary",
-            "policies": "policies_summary",
-        }
-        var_name = slug_to_var.get(layer.slug, layer.slug)
+        var_name = _SLUG_TO_VAR.get(layer.slug, layer.slug)
         summary = summaries.get(var_name, "(No content.)")
         parts.append(f"## {layer.display_name}\n\n{summary}")
 

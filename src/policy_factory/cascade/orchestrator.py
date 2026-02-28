@@ -284,6 +284,79 @@ async def _default_generation_runner(
 
 
 # ---------------------------------------------------------------------------
+# Step execution helper
+# ---------------------------------------------------------------------------
+
+
+async def _execute_step(
+    step: str,
+    layer_slug: str,
+    cascade_id: str,
+    starting_layer: str,
+    user_context: str | None,
+    gen_runner: GenerationRunnerFn,
+    critic_runner: CriticRunnerFn | None,
+    synthesis_runner: SynthesisRunnerFn | None,
+    store: PolicyStore,
+    emitter: EventEmitter,
+    data_dir: Path,
+) -> None:
+    """Execute a single cascade step (generation, critics, or synthesis).
+
+    Shared by the initial attempt and the retry path in the orchestration
+    loop to avoid duplicating the step dispatch logic.
+    """
+    if step == "generation":
+        await emitter.emit(
+            LayerGenerationStarted(
+                cascade_id=cascade_id,
+                layer_slug=layer_slug,
+            )
+        )
+
+        # Provide user context only for the first layer
+        ctx = user_context if layer_slug == starting_layer else None
+        await gen_runner(
+            layer_slug, cascade_id, store, emitter, data_dir, ctx
+        )
+
+        # Auto-commit after generation
+        try:
+            commit_changes(
+                data_dir,
+                f"Generate {layer_slug} layer [cascade {cascade_id[:8]}]",
+            )
+        except Exception as git_exc:
+            logger.warning(
+                "Git commit failed after generation for %s: %s",
+                layer_slug,
+                git_exc,
+            )
+
+        await emitter.emit(
+            LayerGenerationCompleted(
+                cascade_id=cascade_id,
+                layer_slug=layer_slug,
+            )
+        )
+
+    elif step == "critics":
+        if critic_runner is not None:
+            await critic_runner(
+                layer_slug, cascade_id, store, emitter, data_dir,
+            )
+        # If critic_runner is None, skip (step 016 not yet implemented)
+
+    elif step == "synthesis":
+        if synthesis_runner is not None:
+            # Pass critic results = None for now; step 016 handles internals
+            await synthesis_runner(
+                layer_slug, None, cascade_id, store, emitter, data_dir,
+            )
+        # If synthesis_runner is None, skip (step 016 not yet implemented)
+
+
+# ---------------------------------------------------------------------------
 # Orchestration loop
 # ---------------------------------------------------------------------------
 
@@ -387,54 +460,11 @@ async def _run_cascade_loop(
 
             # --- Execute the step ---
             try:
-                if step == "generation":
-                    await emitter.emit(
-                        LayerGenerationStarted(
-                            cascade_id=cascade_id,
-                            layer_slug=layer_slug,
-                        )
-                    )
-
-                    # Provide user context only for the first layer
-                    ctx = user_context if layer_slug == starting_layer else None
-                    await gen_runner(
-                        layer_slug, cascade_id, store, emitter, data_dir, ctx
-                    )
-
-                    # Auto-commit after generation
-                    try:
-                        commit_changes(
-                            data_dir,
-                            f"Generate {layer_slug} layer [cascade {cascade_id[:8]}]",
-                        )
-                    except Exception as git_exc:
-                        logger.warning(
-                            "Git commit failed after generation for %s: %s",
-                            layer_slug,
-                            git_exc,
-                        )
-
-                    await emitter.emit(
-                        LayerGenerationCompleted(
-                            cascade_id=cascade_id,
-                            layer_slug=layer_slug,
-                        )
-                    )
-
-                elif step == "critics":
-                    if critic_runner is not None:
-                        await critic_runner(
-                            layer_slug, cascade_id, store, emitter, data_dir,
-                        )
-                    # If critic_runner is None, skip (step 016 not yet implemented)
-
-                elif step == "synthesis":
-                    if synthesis_runner is not None:
-                        # Pass critic results = None for now; step 016 handles internals
-                        await synthesis_runner(
-                            layer_slug, None, cascade_id, store, emitter, data_dir,
-                        )
-                    # If synthesis_runner is None, skip (step 016 not yet implemented)
+                await _execute_step(
+                    step, layer_slug, cascade_id, starting_layer,
+                    user_context, gen_runner, critic_runner, synthesis_runner,
+                    store, emitter, data_dir,
+                )
 
             except Exception as exc:
                 # Agent failure — pause the cascade with error info
@@ -471,41 +501,12 @@ async def _run_cascade_loop(
 
                 # Resumed — retry the failed step
                 store.update_cascade_status(cascade_id, "running")
-                # Decrement step_idx to retry this step
-                # We do this by recursively entering the loop at the same position
                 try:
-                    if step == "generation":
-                        await emitter.emit(
-                            LayerGenerationStarted(
-                                cascade_id=cascade_id,
-                                layer_slug=layer_slug,
-                            )
-                        )
-                        ctx = user_context if layer_slug == starting_layer else None
-                        await gen_runner(
-                            layer_slug, cascade_id, store, emitter, data_dir, ctx
-                        )
-                        try:
-                            commit_changes(
-                                data_dir,
-                                f"Generate {layer_slug} layer [cascade {cascade_id[:8]}]",
-                            )
-                        except Exception:
-                            pass
-                        await emitter.emit(
-                            LayerGenerationCompleted(
-                                cascade_id=cascade_id,
-                                layer_slug=layer_slug,
-                            )
-                        )
-                    elif step == "critics" and critic_runner is not None:
-                        await critic_runner(
-                            layer_slug, cascade_id, store, emitter, data_dir,
-                        )
-                    elif step == "synthesis" and synthesis_runner is not None:
-                        await synthesis_runner(
-                            layer_slug, None, cascade_id, store, emitter, data_dir,
-                        )
+                    await _execute_step(
+                        step, layer_slug, cascade_id, starting_layer,
+                        user_context, gen_runner, critic_runner, synthesis_runner,
+                        store, emitter, data_dir,
+                    )
                 except Exception as retry_exc:
                     # Second failure — transition to failed
                     error_msg = f"Retry failed: {retry_exc}"
