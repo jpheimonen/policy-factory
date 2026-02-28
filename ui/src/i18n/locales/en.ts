@@ -177,31 +177,100 @@ const en = {
 
   // ── Ideas ───────────────────────────────────────────────────────────
   ideas: {
-    submitPlaceholder: "Describe your policy idea…",
+    // Page
+    title: "Idea Inbox",
+    summaryTotal: "{count} ideas",
+    summaryPending: "{count} pending",
+    summaryEvaluating: "{count} evaluating",
+    summaryEvaluated: "{count} evaluated",
+
+    // Submission
+    submissionHeading: "Submit an Idea",
+    submitPlaceholder: "Describe a policy idea, strategic initiative, or tactical proposal\u2026",
     submitButton: "Submit Idea",
+    submitting: "Submitting\u2026",
+    submitSuccess: "Idea submitted",
+    submitError: "Failed to submit idea",
+    scopeLabel: "Scope to objective",
+    scopeNone: "General (no specific objective)",
+
+    // Generation
     generateButton: "Generate Ideas",
     generateScoped: "Generate ideas for this objective",
+    generating: "Generating ideas\u2026",
+    generationComplete: "{count} ideas generated",
+    generateError: "Failed to start idea generation",
+
+    // Status labels
     statusPending: "Pending",
     statusEvaluating: "Evaluating",
     statusEvaluated: "Evaluated",
     statusArchived: "Archived",
+
+    // Source labels
+    sourceHuman: "Human",
+    sourceAI: "AI",
+
+    // Score axis names
     scoreStrategicFit: "Strategic Fit",
     scoreFeasibility: "Feasibility",
     scoreCost: "Cost",
     scoreRisk: "Risk",
     scorePublicAcceptance: "Public Acceptance",
     scoreInternationalImpact: "International Impact",
-    radarTitle: "Evaluation Scores",
-    criticAssessments: "Critic Assessments",
-    synthesis: "Synthesis",
     overallScore: "Overall Score",
-    sortByScore: "Sort by Score",
-    sortByRecent: "Most Recent",
+    radarTitle: "Evaluation Scores",
+    scoresNotAvailable: "Scores available after evaluation",
+
+    // Critic assessments
+    criticAssessments: "Critic Assessments",
+    criticNotAvailable: "Critic assessments available after evaluation",
+
+    // Synthesis
+    synthesis: "Synthesis",
+    synthesisNotAvailable: "Synthesis available after evaluation",
+    synthesisConsensus: "Consensus Points",
+    synthesisTensions: "Tension Points",
+    synthesisRecommendations: "Recommendations",
+
+    // Filter options
     filterByStatus: "Filter by Status",
-    noIdeas: "No ideas submitted yet",
-    submittedBy: "Submitted by {user}",
-    submittedAt: "Submitted {time}",
-    evaluationInProgress: "Evaluation in progress…",
+    filterAll: "All",
+    filterPending: "Pending",
+    filterEvaluating: "Evaluating",
+    filterEvaluated: "Evaluated",
+    filterArchived: "Archived",
+
+    // Sort options
+    sortByScore: "Highest Score",
+    sortByScoreAsc: "Lowest Score",
+    sortByRecent: "Newest First",
+    sortByOldest: "Oldest First",
+
+    // Idea card
+    submittedBy: "by {user}",
+    submittedAt: "{time}",
+    evaluationInProgress: "Evaluation in progress\u2026",
+    targetObjective: "Scoped to: {objective}",
+
+    // Actions
+    archiveButton: "Archive",
+    archiving: "Archiving\u2026",
+    archiveError: "Failed to archive idea",
+    reEvaluateButton: "Re-evaluate",
+    reEvaluating: "Starting re-evaluation\u2026",
+    reEvaluateError: "Failed to start re-evaluation",
+    collapseButton: "Collapse",
+    expandButton: "Expand",
+    loadMore: "Load More",
+    loadingMore: "Loading more\u2026",
+
+    // Empty / loading / error states
+    noIdeas: "No ideas yet",
+    noIdeasDescription: "Submit a policy idea or generate ideas with AI to get started.",
+    noFilteredIdeas: "No ideas match the current filter",
+    loadError: "Failed to load ideas",
+    detailLoadError: "Failed to load idea details",
   },
 
   // ── Cascade ─────────────────────────────────────────────────────────
