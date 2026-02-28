@@ -5,6 +5,7 @@ from policy_factory.server.routers.auth import router as auth_router
 from policy_factory.server.routers.cascade import router as cascade_router
 from policy_factory.server.routers.feedback import router as feedback_router
 from policy_factory.server.routers.health import router as health_router
+from policy_factory.server.routers.heartbeat import router as heartbeat_router
 from policy_factory.server.routers.history import router as history_router
 from policy_factory.server.routers.ideas import router as ideas_router
 from policy_factory.server.routers.layers import router as layers_router
@@ -17,6 +18,7 @@ __all__ = [
     "cascade_router",
     "feedback_router",
     "health_router",
+    "heartbeat_router",
     "history_router",
     "ideas_router",
     "layers_router",

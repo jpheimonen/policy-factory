@@ -13,6 +13,7 @@ from .cascade import CascadeRun, CascadeStoreMixin, QueueEntry
 from .critic_result import CriticResult, CriticResultMixin, SynthesisResult
 from .events import EventStoreMixin, StoredEvent
 from .feedback_memo import FeedbackMemo, FeedbackMemoMixin
+from .heartbeat import HeartbeatMixin, HeartbeatRun, TierEntry
 from .idea import Idea, IdeaStoreMixin
 from .schema import get_default_db_path, init_db
 from .score import IdeaScore, ScoreStoreMixin
@@ -28,6 +29,7 @@ class PolicyStore(
     FeedbackMemoMixin,
     IdeaStoreMixin,
     ScoreStoreMixin,
+    HeartbeatMixin,
 ):
     """SQLite-backed store for Policy Factory.
 
@@ -41,6 +43,7 @@ class PolicyStore(
     - FeedbackMemoMixin: Bidirectional feedback between layers
     - IdeaStoreMixin: Idea submission and lifecycle management
     - ScoreStoreMixin: 6-axis idea evaluation scores
+    - HeartbeatMixin: Heartbeat run tracking and history
 
     This is the only store class that consumers import and instantiate.
     """
@@ -55,12 +58,14 @@ __all__ = [
     "CascadeRun",
     "CriticResult",
     "FeedbackMemo",
+    "HeartbeatRun",
     "Idea",
     "IdeaScore",
     "PolicyStore",
     "QueueEntry",
     "StoredEvent",
     "SynthesisResult",
+    "TierEntry",
     "User",
     "UserPublic",
     "get_default_db_path",

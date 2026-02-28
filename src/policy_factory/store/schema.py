@@ -163,6 +163,17 @@ CREATE TABLE IF NOT EXISTS idea_scores (
 
 CREATE INDEX IF NOT EXISTS idx_idea_scores_idea_id ON idea_scores(idea_id);
 CREATE INDEX IF NOT EXISTS idx_idea_scores_overall ON idea_scores(overall_score);
+
+CREATE TABLE IF NOT EXISTS heartbeat_runs (
+    id TEXT PRIMARY KEY,
+    trigger TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    highest_tier INTEGER NOT NULL DEFAULT 0,
+    structured_log TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_heartbeat_runs_started_at ON heartbeat_runs(started_at);
 """
 
 

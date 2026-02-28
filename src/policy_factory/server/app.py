@@ -17,13 +17,14 @@ from policy_factory.auth import decode_access_token
 from policy_factory.data.init import get_data_dir, initialize_data_directory
 from policy_factory.events import EventEmitter
 from policy_factory.server.broadcast import BroadcastHandler
-from policy_factory.server.deps import init_deps
+from policy_factory.server.deps import init_deps, init_scheduler, shutdown_scheduler
 from policy_factory.server.routers import (
     activity_router,
     auth_router,
     cascade_router,
     feedback_router,
     health_router,
+    heartbeat_router,
     history_router,
     ideas_router,
     layers_router,
@@ -89,7 +90,24 @@ def create_app(
             broadcast_handler=_broadcast_handler,
             data_dir=resolved_data_dir,
         )
+
+        # Startup: initialize and start the heartbeat scheduler
+        _scheduler = None
+        if store is not None:
+            _scheduler = init_scheduler(
+                store=store,
+                emitter=_event_emitter,
+                data_dir=resolved_data_dir,
+            )
+            if _scheduler is not None:
+                _scheduler.start()
+                logger.info("Heartbeat scheduler started")
+
         yield
+
+        # Shutdown: stop the scheduler
+        shutdown_scheduler()
+
         # Shutdown: cleanup broadcast handler
         if _broadcast_handler is not None:
             _broadcast_handler.shutdown()
@@ -107,6 +125,7 @@ def create_app(
     app.include_router(seed_router)
     app.include_router(feedback_router)
     app.include_router(ideas_router)
+    app.include_router(heartbeat_router)
 
     # --- WebSocket endpoint with JWT authentication ---
     @app.websocket("/ws")

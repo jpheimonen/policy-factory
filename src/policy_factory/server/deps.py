@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -15,6 +16,8 @@ from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
 
 if TYPE_CHECKING:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
     from policy_factory.cascade.controller import CascadeController
     from policy_factory.events import EventEmitter
     from policy_factory.server.broadcast import BroadcastHandler
@@ -28,12 +31,16 @@ _ws_manager: ConnectionManager | None = None
 _event_emitter: EventEmitter | None = None
 _broadcast_handler: BroadcastHandler | None = None
 _data_dir: Path | None = None
+_scheduler: AsyncIOScheduler | None = None
 
 # Cascade controller registry — maps cascade ID → controller instance
 _cascade_controllers: dict[str, CascadeController] = {}
 
 # Security scheme for Bearer token extraction
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+# Default heartbeat interval in hours
+_DEFAULT_HEARTBEAT_INTERVAL_HOURS = 4.0
 
 
 def init_deps(
@@ -165,6 +172,143 @@ def get_active_cascade_id() -> str | None:
         if controller.state in (CascadeState.RUNNING, CascadeState.PAUSED):
             return cid
     return None
+
+
+# ---------------------------------------------------------------------------
+# Scheduler management
+# ---------------------------------------------------------------------------
+
+
+def _get_heartbeat_interval_hours() -> float:
+    """Get the configured heartbeat interval in hours.
+
+    Returns 0 if disabled via environment variable.
+    """
+    env_val = os.environ.get("POLICY_FACTORY_HEARTBEAT_INTERVAL_HOURS")
+    if env_val is not None:
+        try:
+            return float(env_val)
+        except (ValueError, TypeError):
+            logger.warning(
+                "Invalid POLICY_FACTORY_HEARTBEAT_INTERVAL_HOURS=%r, "
+                "using default %.1f",
+                env_val,
+                _DEFAULT_HEARTBEAT_INTERVAL_HOURS,
+            )
+    return _DEFAULT_HEARTBEAT_INTERVAL_HOURS
+
+
+def init_scheduler(
+    store: PolicyStore,
+    emitter: EventEmitter,
+    data_dir: Path,
+) -> AsyncIOScheduler | None:
+    """Create and configure the APScheduler with the heartbeat job.
+
+    The heartbeat interval is configurable via the
+    ``POLICY_FACTORY_HEARTBEAT_INTERVAL_HOURS`` environment variable.
+    Setting it to 0 disables the scheduled heartbeat.
+
+    Args:
+        store: PolicyStore for persistence.
+        emitter: EventEmitter for broadcasting events.
+        data_dir: Root data directory.
+
+    Returns:
+        The configured AsyncIOScheduler, or None if the heartbeat is disabled.
+    """
+    global _scheduler
+
+    interval_hours = _get_heartbeat_interval_hours()
+
+    if interval_hours <= 0:
+        logger.info("Heartbeat scheduler disabled (interval=0)")
+        _scheduler = None
+        return None
+
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    scheduler = AsyncIOScheduler()
+
+    # Create the heartbeat job function with bound dependencies
+    async def _heartbeat_job() -> None:
+        """Scheduled heartbeat job — thin wrapper around the orchestrator."""
+        from policy_factory.heartbeat.orchestrator import run_heartbeat
+
+        # Concurrency guard: skip if a heartbeat is already running
+        if store.has_running_heartbeat():
+            logger.info("Skipping scheduled heartbeat — previous run still active")
+            return
+
+        try:
+            # Import cascade trigger and idea generator lazily
+            cascade_trigger = None
+            idea_generator = None
+
+            try:
+                from policy_factory.cascade.orchestrator import trigger_cascade
+                cascade_trigger = trigger_cascade
+            except ImportError:
+                logger.warning("Cascade trigger not available")
+
+            try:
+                from policy_factory.ideas.generator import generate_ideas
+                idea_generator = generate_ideas
+            except ImportError:
+                logger.warning("Idea generator not available")
+
+            await run_heartbeat(
+                trigger="scheduled",
+                store=store,
+                emitter=emitter,
+                data_dir=data_dir,
+                cascade_trigger=cascade_trigger,
+                idea_generator=idea_generator,
+            )
+        except Exception:
+            logger.exception("Scheduled heartbeat job failed unexpectedly")
+
+    # Add the job with interval trigger and coalescing
+    scheduler.add_job(
+        _heartbeat_job,
+        trigger=IntervalTrigger(hours=interval_hours),
+        id="heartbeat",
+        name="Heartbeat — tiered news monitoring",
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,  # 1 hour grace for missed jobs
+    )
+
+    _scheduler = scheduler
+    logger.info(
+        "Heartbeat scheduler configured: interval=%.1f hours", interval_hours
+    )
+    return scheduler
+
+
+def get_scheduler() -> AsyncIOScheduler | None:
+    """Get the APScheduler instance, or None if not initialized/disabled.
+
+    Returns:
+        The AsyncIOScheduler, or None.
+    """
+    return _scheduler
+
+
+def shutdown_scheduler() -> None:
+    """Gracefully shut down the scheduler.
+
+    Waits for any running heartbeat to complete (with a reasonable timeout).
+    """
+    global _scheduler
+    if _scheduler is not None:
+        try:
+            _scheduler.shutdown(wait=True)
+            logger.info("Heartbeat scheduler shut down")
+        except Exception:
+            logger.exception("Error shutting down scheduler")
+        _scheduler = None
 
 
 async def get_current_user(
