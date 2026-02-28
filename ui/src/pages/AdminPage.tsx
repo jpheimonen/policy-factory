@@ -50,14 +50,16 @@ interface UserRecord {
 }
 
 interface HeartbeatStatus {
-  active: boolean;
-  interval_seconds?: number;
-  next_run?: string;
-  currently_running?: boolean;
+  scheduler_active: boolean;
+  interval_hours?: number;
+  next_run_time?: string | null;
+  heartbeat_running?: boolean;
   latest_run?: {
-    timestamp: string;
+    id: string;
+    trigger: string;
+    started_at: string;
+    completed_at?: string | null;
     highest_tier: number;
-    outcome?: string;
   } | null;
 }
 
@@ -95,12 +97,12 @@ function formatDateTime(isoString: string): string {
   }
 }
 
-function formatInterval(seconds: number): string {
-  if (seconds >= 3600) {
-    const hours = Math.round(seconds / 3600);
-    return `Every ${hours} hour${hours > 1 ? "s" : ""}`;
+function formatIntervalHours(hours: number): string {
+  if (hours >= 1) {
+    const rounded = Math.round(hours);
+    return `Every ${rounded} hour${rounded > 1 ? "s" : ""}`;
   }
-  const minutes = Math.round(seconds / 60);
+  const minutes = Math.round(hours * 60);
   return `Every ${minutes} minute${minutes > 1 ? "s" : ""}`;
 }
 
@@ -150,8 +152,8 @@ export function AdminPage() {
     setUsersLoading(true);
     setUsersError(null);
     try {
-      const data = await apiRequest<UserRecord[]>("/api/users/");
-      setUsers(data);
+      const data = await apiRequest<{ users: UserRecord[] }>("/api/users/");
+      setUsers(data.users);
     } catch (err) {
       const detail = isApiError(err) ? err.detail : t("errors.generic");
       setUsersError(detail);
@@ -419,22 +421,22 @@ export function AdminPage() {
                 {heartbeatStatus ? (
                   <>
                     <StatusItem>
-                      <StatusDot $active={heartbeatStatus.active} />
-                      {heartbeatStatus.active
+                      <StatusDot $active={heartbeatStatus.scheduler_active} />
+                      {heartbeatStatus.scheduler_active
                         ? t("admin.heartbeatActive")
                         : t("admin.heartbeatInactive")}
                     </StatusItem>
-                    {heartbeatStatus.interval_seconds != null && (
+                    {heartbeatStatus.interval_hours != null && (
                       <StatusItem>
                         {t("admin.heartbeatInterval", {
-                          interval: formatInterval(heartbeatStatus.interval_seconds),
+                          interval: formatIntervalHours(heartbeatStatus.interval_hours),
                         })}
                       </StatusItem>
                     )}
-                    {heartbeatStatus.next_run && (
+                    {heartbeatStatus.next_run_time && (
                       <StatusItem>
                         {t("admin.heartbeatNextRun", {
-                          time: formatDateTime(heartbeatStatus.next_run),
+                          time: formatDateTime(heartbeatStatus.next_run_time),
                         })}
                       </StatusItem>
                     )}
@@ -442,7 +444,7 @@ export function AdminPage() {
                       <>
                         <StatusItem>
                           {t("admin.heartbeatLastRun", {
-                            time: formatDateTime(heartbeatStatus.latest_run.timestamp),
+                            time: formatDateTime(heartbeatStatus.latest_run.started_at),
                           })}
                         </StatusItem>
                         <StatusItem>
@@ -450,13 +452,6 @@ export function AdminPage() {
                             tier: String(heartbeatStatus.latest_run.highest_tier),
                           })}
                         </StatusItem>
-                        {heartbeatStatus.latest_run.outcome && (
-                          <StatusItem>
-                            {t("admin.heartbeatLastOutcome", {
-                              outcome: heartbeatStatus.latest_run.outcome,
-                            })}
-                          </StatusItem>
-                        )}
                       </>
                     ) : (
                       <StatusItem>
@@ -470,11 +465,11 @@ export function AdminPage() {
                         onClick={handleTriggerHeartbeat}
                         disabled={
                           triggerHeartbeatLoading ||
-                          heartbeatStatus.currently_running === true
+                          heartbeatStatus.heartbeat_running === true
                         }
                         $loading={triggerHeartbeatLoading}
                         title={
-                          heartbeatStatus.currently_running
+                          heartbeatStatus.heartbeat_running
                             ? t("admin.heartbeatCurrentlyRunning")
                             : undefined
                         }

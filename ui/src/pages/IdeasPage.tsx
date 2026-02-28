@@ -188,7 +188,9 @@ export function IdeasPage() {
           </Text>
           <S.StatsBadges>
             <Badge $variant="neutral">
-              {t("ideas.summaryTotal", { count: String(stats.total) })}
+              {stats.total === 1
+                ? t("ideas.summaryTotalOne")
+                : t("ideas.summaryTotal", { count: String(stats.total) })}
             </Badge>
             {stats.pending > 0 && (
               <Badge $variant="info">

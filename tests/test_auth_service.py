@@ -224,8 +224,8 @@ class TestDecodeAccessToken:
 class TestLoadAuthConfig:
     """Tests for load_auth_config function."""
 
-    def test_raises_without_jwt_secret_key(self) -> None:
-        """load_auth_config raises RuntimeError if JWT_SECRET_KEY is not set."""
+    def test_auto_generates_key_without_jwt_secret_key(self) -> None:
+        """load_auth_config auto-generates a key if JWT_SECRET_KEY is not set."""
         import policy_factory.auth as auth_mod
 
         auth_mod.JWT_SECRET_KEY = None
@@ -233,8 +233,10 @@ class TestLoadAuthConfig:
         with patch.dict(os.environ, {}, clear=True):
             # Remove the key if present
             os.environ.pop("JWT_SECRET_KEY", None)
-            with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
-                load_auth_config()
+            load_auth_config()
+            # Should have generated a random key (64 hex chars = 32 bytes)
+            assert auth_mod.JWT_SECRET_KEY is not None
+            assert len(auth_mod.JWT_SECRET_KEY) == 64
 
     def test_loads_secret_key_from_env(self) -> None:
         """load_auth_config loads JWT_SECRET_KEY from environment."""

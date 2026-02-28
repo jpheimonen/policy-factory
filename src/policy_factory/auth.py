@@ -33,17 +33,21 @@ JWT_EXPIRY_HOURS = 24  # Default, overridable via env
 def load_auth_config() -> None:
     """Load auth configuration from environment variables.
 
-    Must be called during server startup. Raises RuntimeError if
-    JWT_SECRET_KEY is not set.
+    Must be called during server startup. If JWT_SECRET_KEY is not set,
+    a random key is auto-generated and a warning is logged. This is fine
+    for development but means tokens won't survive server restarts.
     """
     global JWT_SECRET_KEY, JWT_EXPIRY_HOURS
 
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
     if not JWT_SECRET_KEY:
-        raise RuntimeError(
-            "JWT_SECRET_KEY environment variable is not set. "
-            "Set it to a long random string (e.g., `openssl rand -hex 32`). "
-            "This is required for signing JWT tokens."
+        import secrets
+
+        JWT_SECRET_KEY = secrets.token_hex(32)
+        logger.warning(
+            "JWT_SECRET_KEY not set — generated a random key. "
+            "Tokens will not survive server restarts. "
+            "Set JWT_SECRET_KEY in your .env for persistent sessions."
         )
 
     expiry_str = os.environ.get("JWT_EXPIRY_HOURS")

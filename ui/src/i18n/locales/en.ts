@@ -181,6 +181,7 @@ const en = {
     // Page
     title: "Idea Inbox",
     summaryTotal: "{count} ideas",
+    summaryTotalOne: "1 idea",
     summaryPending: "{count} pending",
     summaryEvaluating: "{count} evaluating",
     summaryEvaluated: "{count} evaluated",

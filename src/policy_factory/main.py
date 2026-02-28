@@ -114,9 +114,13 @@ def server_command(args: argparse.Namespace) -> int:
     """Start the web UI server."""
     import uvicorn
 
+    from policy_factory.auth import load_auth_config
     from policy_factory.server.app import create_app
     from policy_factory.server.port_utils import find_available_port, is_port_available
     from policy_factory.store import PolicyStore, get_default_db_path
+
+    # Load auth configuration (JWT secret key, etc.)
+    load_auth_config()
 
     # Initialize the store
     db_path = get_default_db_path()
