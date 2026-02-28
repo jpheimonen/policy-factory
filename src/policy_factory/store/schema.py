@@ -131,6 +131,38 @@ CREATE INDEX IF NOT EXISTS idx_feedback_memos_cascade_id
     ON feedback_memos(cascade_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_memos_created_at
     ON feedback_memos(created_at);
+
+CREATE TABLE IF NOT EXISTS ideas (
+    id TEXT PRIMARY KEY,
+    text TEXT NOT NULL,
+    source TEXT NOT NULL,
+    target_objective TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    submitted_by TEXT NOT NULL,
+    submitted_at TEXT NOT NULL,
+    evaluation_started_at TEXT,
+    evaluation_completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
+CREATE INDEX IF NOT EXISTS idx_ideas_submitted_at ON ideas(submitted_at);
+
+CREATE TABLE IF NOT EXISTS idea_scores (
+    id TEXT PRIMARY KEY,
+    idea_id TEXT NOT NULL,
+    strategic_fit REAL NOT NULL,
+    feasibility REAL NOT NULL,
+    cost REAL NOT NULL,
+    risk REAL NOT NULL,
+    public_acceptance REAL NOT NULL,
+    international_impact REAL NOT NULL,
+    overall_score REAL NOT NULL,
+    agent_run_id TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_idea_scores_idea_id ON idea_scores(idea_id);
+CREATE INDEX IF NOT EXISTS idx_idea_scores_overall ON idea_scores(overall_score);
 """
 
 
