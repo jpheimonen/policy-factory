@@ -1,7 +1,7 @@
 """Session configuration and per-agent model resolution.
 
 Provides:
-- ``AgentConfig`` dataclass for configuring Claude Code SDK sessions.
+- ``AgentConfig`` dataclass for configuring Anthropic SDK agent sessions.
 - ``resolve_model()`` for mapping agent roles to model names via
   environment variables with sensible defaults.
 """
@@ -11,9 +11,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-# Type for the SDK permission mode parameter
+# Type for the SDK permission mode parameter (legacy, kept for compatibility)
 PermissionMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]
 
 # Supported agent roles
@@ -89,20 +89,25 @@ def _default_data_dir() -> Path:
 
 @dataclass
 class AgentConfig:
-    """Configuration for a single Claude Code agent session.
+    """Configuration for a single Anthropic SDK agent session.
 
     Attributes:
-        cwd: Working directory for the agent. Defaults to ``data/``.
         model: Model name. When ``None`` the SDK uses its default.
-        max_turns: Maximum conversation turns (``None`` = SDK default).
         system_prompt: Optional system prompt override.
-        permission_mode: SDK permission mode. Defaults to
-            ``"bypassPermissions"`` since agents need to read/write
-            markdown files in the data directory.
+        tools: List of tool definitions in Anthropic API format.
+            Each tool has name, description, and input_schema fields.
+        cwd: Working directory for the agent. Defaults to ``data/``.
+            (Legacy field, kept for compatibility; use data_dir in session.)
+        max_turns: Maximum conversation turns (``None`` = SDK default).
+            (Legacy field, kept for compatibility.)
+        permission_mode: SDK permission mode.
+            (Legacy field, kept for compatibility with old callers.)
     """
 
-    cwd: Path = field(default_factory=_default_data_dir)
     model: str | None = None
-    max_turns: int | None = None
     system_prompt: str | None = None
+    tools: list[dict[str, Any]] = field(default_factory=list)
+    # Legacy fields - kept for backward compatibility with existing callers
+    cwd: Path = field(default_factory=_default_data_dir)
+    max_turns: int | None = None
     permission_mode: PermissionMode = "bypassPermissions"
