@@ -1,8 +1,11 @@
 """Data directory initialization — first-run setup.
 
 Called during FastAPI lifespan startup. Creates the data directory,
-initializes the git repo, creates layer subdirectories, writes
-pre-seeded values, and makes the initial commit.
+initializes the git repo, creates layer subdirectories with README
+placeholders, and makes the initial commit.
+
+The values layer starts empty; values are populated via explicit
+seeding through the API endpoint, not at startup.
 
 Idempotent: if the data directory and git repo already exist, does nothing.
 """
@@ -11,13 +14,10 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 
 from .git import commit_changes, init_data_repo, is_git_repo
 from .layers import LAYERS, write_narrative
-from .markdown import write_markdown
-from .seed_values import SEED_VALUES
 
 logger = logging.getLogger(__name__)
 
@@ -62,34 +62,11 @@ def initialize_data_directory(data_root: Path | None = None) -> None:
     init_data_repo(data_root)
 
     # Create all five layer subdirectories with placeholder README.md
-    now = datetime.now(timezone.utc).isoformat()
     for layer in LAYERS:
         layer_dir = data_root / layer.slug
         layer_dir.mkdir(parents=True, exist_ok=True)
         write_narrative(data_root, layer.slug, f"# {layer.display_name}\n")
 
-    # Write pre-seeded values
-    _write_seed_values(data_root, now)
-
     # Create the initial commit
-    commit_changes(data_root, "Initial data directory with pre-seeded Finnish values")
-    logger.info("Data directory initialized with %d seed values", len(SEED_VALUES))
-
-
-def _write_seed_values(data_root: Path, timestamp: str) -> None:
-    """Write the pre-seeded Finnish values files."""
-    values_dir = data_root / "values"
-    values_dir.mkdir(parents=True, exist_ok=True)
-
-    for filename, title, body in SEED_VALUES:
-        frontmatter = {
-            "title": title,
-            "status": "active",
-            "created": timestamp,
-            "created_by": "system",
-            "last_modified": timestamp,
-            "last_modified_by": "system",
-        }
-        write_markdown(values_dir / filename, frontmatter, body)
-
-    logger.info("Wrote %d seed value files to %s", len(SEED_VALUES), values_dir)
+    commit_changes(data_root, "Initial data directory structure")
+    logger.info("Data directory initialized at %s", data_root)
