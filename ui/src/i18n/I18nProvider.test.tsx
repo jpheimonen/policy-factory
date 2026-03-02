@@ -136,7 +136,7 @@ describe("Translation lookup (t function)", () => {
     expect(t("admin.createButton")).toBe("Create User");
 
     // History
-    expect(t("history.title")).toBe("Version History");
+    expect(t("history.pageTitle")).toBe("Version History");
 
     // Critics
     expect(t("critics.realist")).toBe("Realist");
