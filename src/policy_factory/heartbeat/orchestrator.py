@@ -181,12 +181,13 @@ async def _run_tier1(
 
     try:
         # Create and run session
-        config = AgentConfig(cwd=data_dir, model=model)
+        config = AgentConfig(model=model)
         session = AgentSession(
             config=config,
             emitter=emitter,
             context_id=run_id,
             agent_label="Heartbeat — news skim",
+            data_dir=data_dir,
         )
         result = await session.run(prompt)
 
@@ -309,12 +310,13 @@ async def _run_tier2(
 
     try:
         # Create and run session
-        config = AgentConfig(cwd=data_dir, model=model)
+        config = AgentConfig(model=model)
         session = AgentSession(
             config=config,
             emitter=emitter,
             context_id=run_id,
             agent_label="Heartbeat — triage analysis",
+            data_dir=data_dir,
         )
         result = await session.run(prompt)
 
@@ -450,12 +452,13 @@ async def _run_tier3(
 
     try:
         # Create and run session
-        config = AgentConfig(cwd=data_dir, model=model)
+        config = AgentConfig(model=model)
         session = AgentSession(
             config=config,
             emitter=emitter,
             context_id=run_id,
             agent_label="Heartbeat — SA update",
+            data_dir=data_dir,
         )
         result = await session.run(prompt)
 

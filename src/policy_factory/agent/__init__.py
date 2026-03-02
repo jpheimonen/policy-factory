@@ -8,6 +8,7 @@ Public API:
 - ``ContextOverflowError`` — Context window exceeded.
 - ``MeditationFilter`` — Meditation content filter for streamed output.
 - ``resolve_model`` — Resolve model name for an agent role.
+- ``resolve_tools`` — Resolve tool configuration for an agent role.
 - ``build_agent_prompt`` — Assemble meditation preamble + agent template.
 - File tools: ``list_files``, ``read_file``, ``write_file``, ``delete_file``
 - Tool definitions: ``FILE_TOOLS``, ``READ_ONLY_TOOLS``, ``TOOL_FUNCTIONS``
@@ -15,7 +16,7 @@ Public API:
 - ``validate_path`` — Validate path within sandbox.
 """
 
-from policy_factory.agent.config import AgentConfig, resolve_model
+from policy_factory.agent.config import AgentConfig, resolve_model, resolve_tools
 from policy_factory.agent.errors import AgentError, ContextOverflowError
 from policy_factory.agent.meditation_filter import MeditationFilter
 from policy_factory.agent.prompts import build_agent_prompt
@@ -48,6 +49,7 @@ __all__ = [
     "list_files",
     "read_file",
     "resolve_model",
+    "resolve_tools",
     "validate_path",
     "write_file",
 ]

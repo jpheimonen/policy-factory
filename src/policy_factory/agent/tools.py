@@ -317,6 +317,17 @@ DELETE_FILE_TOOL = {
 
 
 # ---------------------------------------------------------------------------
+# Server-side tool definitions (handled by Anthropic's API)
+# ---------------------------------------------------------------------------
+
+# Web search is a server-side tool handled automatically by Anthropic's API.
+# Results come back automatically - no client-side tool execution needed.
+WEB_SEARCH_TOOL: dict[str, Any] = {
+    "type": "web_search_20250305",
+    "name": "web_search",
+}
+
+# ---------------------------------------------------------------------------
 # Tool sets
 # ---------------------------------------------------------------------------
 
@@ -326,7 +337,14 @@ FILE_TOOLS = [LIST_FILES_TOOL, READ_FILE_TOOL, WRITE_FILE_TOOL, DELETE_FILE_TOOL
 # Read-only subset for critic agents
 READ_ONLY_TOOLS = [LIST_FILES_TOOL, READ_FILE_TOOL]
 
+# File tools plus web search (for seed and heartbeat-sa-update)
+FILE_TOOLS_WITH_WEB_SEARCH = FILE_TOOLS + [WEB_SEARCH_TOOL]
+
+# Web search only (for heartbeat-skim and heartbeat-triage)
+WEB_SEARCH_ONLY = [WEB_SEARCH_TOOL]
+
 # Tool name to function mapping (for use by AgentSession)
+# Note: web_search is not included - it's handled server-side by Anthropic
 TOOL_FUNCTIONS = {
     "list_files": list_files,
     "read_file": read_file,

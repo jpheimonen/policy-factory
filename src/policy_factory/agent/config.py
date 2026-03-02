@@ -4,17 +4,21 @@ Provides:
 - ``AgentConfig`` dataclass for configuring Anthropic SDK agent sessions.
 - ``resolve_model()`` for mapping agent roles to model names via
   environment variables with sensible defaults.
+- ``resolve_tools()`` for mapping agent roles to tool configurations.
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Literal
 
-# Type for the SDK permission mode parameter (legacy, kept for compatibility)
-PermissionMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]
+from policy_factory.agent.tools import (
+    FILE_TOOLS,
+    FILE_TOOLS_WITH_WEB_SEARCH,
+    READ_ONLY_TOOLS,
+    WEB_SEARCH_ONLY,
+)
 
 # Supported agent roles
 AgentRole = Literal[
@@ -28,6 +32,7 @@ AgentRole = Literal[
     "idea-evaluator",
     "idea-generator",
     "seed",
+    "values-seed",
 ]
 
 # Default model assignments per role
@@ -42,6 +47,7 @@ _DEFAULT_MODELS: dict[str, str] = {
     "idea-evaluator": "claude-sonnet-4-20250514",
     "idea-generator": "claude-sonnet-4-20250514",
     "seed": "claude-sonnet-4-20250514",
+    "values-seed": "claude-sonnet-4-20250514",
 }
 
 # Environment variable names per role
@@ -56,6 +62,7 @@ _ENV_VAR_MAP: dict[str, str] = {
     "idea-evaluator": "POLICY_FACTORY_MODEL_IDEA_EVALUATOR",
     "idea-generator": "POLICY_FACTORY_MODEL_IDEA_GENERATOR",
     "seed": "POLICY_FACTORY_MODEL_SEED",
+    "values-seed": "POLICY_FACTORY_MODEL_VALUES_SEED",
 }
 
 
@@ -82,9 +89,57 @@ def resolve_model(role: str) -> str:
     return os.environ.get(env_var) or _DEFAULT_MODELS[role]
 
 
-def _default_data_dir() -> Path:
-    """Return the default data directory (``data/`` in the project root)."""
-    return Path.cwd() / "data"
+# Tool configurations per role
+_TOOLS_BY_ROLE: dict[str, list[dict[str, Any]]] = {
+    # Generators need full file access to write layer content
+    "generator": FILE_TOOLS,
+    # Critics only need to read files (read-only access)
+    "critic": READ_ONLY_TOOLS,
+    # Synthesis agents process existing data, no tools needed
+    "synthesis": [],
+    # Classifier agents analyze content, no tools needed
+    "classifier": [],
+    # Heartbeat skim uses web search to find relevant news
+    "heartbeat-skim": WEB_SEARCH_ONLY,
+    # Heartbeat triage evaluates items using web search
+    "heartbeat-triage": WEB_SEARCH_ONLY,
+    # Heartbeat SA update needs file tools and web search
+    "heartbeat-sa-update": FILE_TOOLS_WITH_WEB_SEARCH,
+    # Seed agent needs file tools and web search
+    "seed": FILE_TOOLS_WITH_WEB_SEARCH,
+    # Values seed uses Claude's knowledge, no tools needed
+    "values-seed": [],
+    # Idea evaluator analyzes ideas, no tools needed
+    "idea-evaluator": [],
+    # Idea generator creates ideas from context, no tools needed
+    "idea-generator": [],
+}
+
+
+def resolve_tools(role: str) -> list[dict[str, Any]]:
+    """Resolve the tool configuration for an agent role.
+
+    Each role has a specific set of tools appropriate for its function:
+    - Generator agents get full file tools
+    - Critic agents get read-only tools
+    - Heartbeat agents get web search
+    - Values-seed, synthesis, classifier, and idea agents get no tools
+
+    Args:
+        role: Agent role (e.g. ``"generator"``, ``"critic"``).
+
+    Returns:
+        A list of tool definitions in Anthropic API format.
+
+    Raises:
+        ValueError: If the role is not recognised.
+    """
+    if role not in _TOOLS_BY_ROLE:
+        valid = ", ".join(sorted(_TOOLS_BY_ROLE))
+        raise ValueError(f"Unknown agent role: {role!r}. Valid roles: {valid}")
+
+    # Return a copy to prevent mutation of the original
+    return list(_TOOLS_BY_ROLE[role])
 
 
 @dataclass
@@ -96,18 +151,10 @@ class AgentConfig:
         system_prompt: Optional system prompt override.
         tools: List of tool definitions in Anthropic API format.
             Each tool has name, description, and input_schema fields.
-        cwd: Working directory for the agent. Defaults to ``data/``.
-            (Legacy field, kept for compatibility; use data_dir in session.)
-        max_turns: Maximum conversation turns (``None`` = SDK default).
-            (Legacy field, kept for compatibility.)
-        permission_mode: SDK permission mode.
-            (Legacy field, kept for compatibility with old callers.)
+            For custom tools, each has name, description, and input_schema.
+            For server-side tools like web_search, uses type field instead.
     """
 
     model: str | None = None
     system_prompt: str | None = None
     tools: list[dict[str, Any]] = field(default_factory=list)
-    # Legacy fields - kept for backward compatibility with existing callers
-    cwd: Path = field(default_factory=_default_data_dir)
-    max_turns: int | None = None
-    permission_mode: PermissionMode = "bypassPermissions"

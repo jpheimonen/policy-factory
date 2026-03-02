@@ -168,7 +168,7 @@ class TestAgentSessionInit:
     """Tests for AgentSession initialization."""
 
     def test_accepts_config_and_emitter(self) -> None:
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter, context_id="ctx-1", agent_label="Test")
         assert session._config is config
@@ -190,7 +190,7 @@ class TestAgentSessionRun:
     @pytest.mark.asyncio
     async def test_run_returns_agent_result_on_success(self) -> None:
         """Simulate a successful agent run."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter, agent_label="Test agent")
 
@@ -213,7 +213,7 @@ class TestAgentSessionRun:
     @pytest.mark.asyncio
     async def test_run_emits_text_chunk_events(self) -> None:
         """Verify that text chunks are emitted via EventEmitter."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         received_events: list[AgentTextChunk] = []
 
@@ -243,7 +243,7 @@ class TestAgentSessionRun:
     @pytest.mark.asyncio
     async def test_run_captures_full_output_including_meditation(self) -> None:
         """Full output should include all text, even meditation content."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -264,7 +264,7 @@ class TestAgentSessionRun:
     @pytest.mark.asyncio
     async def test_run_raises_context_overflow_on_is_error_result(self) -> None:
         """ContextOverflowError should be raised on 'prompt is too long' result."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -280,7 +280,7 @@ class TestAgentSessionRun:
     @pytest.mark.asyncio
     async def test_run_raises_agent_error_on_no_result(self) -> None:
         """AgentError should be raised if no result message is received."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -300,7 +300,7 @@ class TestAgentSessionRetry:
     @pytest.mark.asyncio
     async def test_retries_on_transient_error(self) -> None:
         """Transient errors should trigger retries with backoff."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -323,7 +323,7 @@ class TestAgentSessionRetry:
     @pytest.mark.asyncio
     async def test_no_retry_on_context_overflow(self) -> None:
         """ContextOverflowError should NOT be retried."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -343,7 +343,7 @@ class TestAgentSessionRetry:
     @pytest.mark.asyncio
     async def test_no_retry_on_auth_error(self) -> None:
         """Authentication errors should NOT be retried."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -363,7 +363,7 @@ class TestAgentSessionRetry:
     @pytest.mark.asyncio
     async def test_raises_after_max_retries(self) -> None:
         """After MAX_RETRIES attempts, the error should propagate."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -384,7 +384,7 @@ class TestAgentSessionRetry:
     @pytest.mark.asyncio
     async def test_exponential_backoff_delays(self) -> None:
         """Verify exponential backoff delays between retries."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -418,7 +418,7 @@ class TestAgentSessionConfig:
     @pytest.mark.asyncio
     async def test_config_model_passed_to_sdk(self) -> None:
         """Verify that the model from config is passed to SDK options."""
-        config = AgentConfig(cwd=Path("/tmp/test"), model="claude-opus-4-0-20250514")
+        config = AgentConfig(model="claude-opus-4-0-20250514")
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -434,7 +434,7 @@ class TestAgentSessionConfig:
     @pytest.mark.asyncio
     async def test_config_cwd_passed_to_sdk(self) -> None:
         """Verify that the working directory is passed to SDK options."""
-        config = AgentConfig(cwd=Path("/tmp/custom-data"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
@@ -450,7 +450,7 @@ class TestAgentSessionConfig:
     @pytest.mark.asyncio
     async def test_web_search_in_allowed_tools(self) -> None:
         """Verify that web search tools are included in allowed_tools."""
-        config = AgentConfig(cwd=Path("/tmp/test"))
+        config = AgentConfig()
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
 
