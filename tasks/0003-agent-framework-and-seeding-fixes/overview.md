@@ -6,7 +6,7 @@ Task 0001 built the complete Policy Factory application shell, but the agent fra
 
 | Step | Title | Done | Description |
 |------|-------|------|-------------|
-| [001](001.md) | Add Anthropic SDK dependency | [ ] | Add the anthropic package to pyproject.toml and verify installation |
+| [001](001.md) | Add Anthropic SDK dependency | [x] | Add the anthropic package to pyproject.toml and verify installation |
 | [002](002.md) | Create file tools module | [ ] | Implement list_files, read_file, write_file, delete_file tools with sandbox validation |
 | [003](003.md) | Rewrite AgentSession core | [ ] | Replace _run_once() with Anthropic SDK streaming agentic loop |
 | [004](004.md) | Update AgentConfig for tool configuration | [ ] | Remove obsolete fields, add per-agent tool sets, add values-seed role |
