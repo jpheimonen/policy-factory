@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Annotated
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from policy_factory.cascade.orchestrator import trigger_cascade
@@ -59,6 +59,18 @@ class SeedStatusResponse(BaseModel):
 
     seeded: bool
     item_count: int = 0
+
+
+class SeedRequest(BaseModel):
+    """Request body for SA seed endpoint."""
+
+    context: str | None = None
+    """Optional human-provided context to inform the seed agent's research.
+
+    When provided, this context is prepended to the seed prompt so the agent
+    incorporates it alongside web research. Useful for providing situational
+    context like "Here's how Finland's situation looks right now".
+    """
 
 
 class ValuesSeedResponse(BaseModel):
@@ -349,29 +361,37 @@ async def seed_values(
 @router.post("/")
 async def trigger_seed(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
+    request: SeedRequest | None = None,
 ) -> SeedResponse:
-    """Trigger initial Situational Awareness seeding.
+    """Trigger Situational Awareness seeding.
 
-    Checks whether the SA layer already has content. If it does,
-    returns 409. Otherwise, runs the seed agent and triggers a cascade.
+    Clears any existing SA items, runs the seed agent with web search,
+    and triggers a cascade after successful seeding. This endpoint is
+    re-runnable — calling it multiple times will replace existing SA
+    items each time.
+
+    Args:
+        request: Optional request body with context field. When context
+            is provided, it is prepended to the seed prompt so the agent
+            incorporates it alongside web research.
+
+    Returns:
+        SeedResponse with success status, cascade ID, and message.
     """
     store = get_store()
     emitter = get_event_emitter()
     data_dir = get_data_dir()
 
-    # Check if already seeded
-    seeded, count = _is_seeded(data_dir)
-    if seeded:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"Situational Awareness layer already has {count} items. "
-                "Seeding is a one-time operation."
-            ),
-        )
+    # Clear existing SA items before re-seeding
+    existing_items = list_items(data_dir, "situational-awareness")
+    for item in existing_items:
+        try:
+            delete_item(data_dir, "situational-awareness", item.filename)
+        except Exception:
+            logger.warning("Failed to delete existing SA item %s", item.filename)
 
     # Import agent framework lazily
-    from policy_factory.agent.config import AgentConfig, resolve_model
+    from policy_factory.agent.config import AgentConfig, resolve_model, resolve_tools
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
 
@@ -393,8 +413,9 @@ async def trigger_seed(
         else "(no values content)"
     )
 
-    # Resolve seed model
+    # Resolve seed model and tools
     model = resolve_model("seed")
+    tools = resolve_tools("seed")
 
     # Build seed prompt
     current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -405,10 +426,21 @@ async def trigger_seed(
         values_content=values_content,
     )
 
-    # Create agent config
+    # Prepend user-provided context if available
+    if request and request.context:
+        context_section = (
+            "## Human-Provided Context\n\n"
+            "The user has provided the following situational context to inform "
+            "your research. Consider this information alongside your web research:\n\n"
+            f"{request.context}\n\n"
+            "---\n\n"
+        )
+        prompt = context_section + prompt
+
+    # Create agent config with tools
     config = AgentConfig(
-        cwd=data_dir,
         model=model,
+        tools=tools,
     )
 
     # Record agent run
@@ -427,6 +459,7 @@ async def trigger_seed(
         emitter=emitter,
         context_id="seed",
         agent_label=agent_label,
+        data_dir=data_dir,
     )
 
     try:

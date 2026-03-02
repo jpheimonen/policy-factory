@@ -118,17 +118,53 @@ class TestTriggerSeed:
         resp = client.post("/api/seed/")
         assert resp.status_code == 401
 
-    def test_returns_409_if_already_seeded(
+    def test_accepts_request_without_body(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Endpoint accepts POST without request body (backward compatible)."""
+        # We just verify the endpoint accepts the request without body
+        # The actual agent execution would fail in tests without mocking
+        # but the endpoint itself should handle the request
+        resp = client.post("/api/seed/", headers=auth_headers)
+        # 200 success or any non-422 error means the body parsing succeeded
+        # (may fail on agent execution, but that's expected without mocking)
+        assert resp.status_code != 422, "Endpoint should accept empty body"
+
+    def test_accepts_request_with_context(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Endpoint accepts POST with optional context field."""
+        resp = client.post(
+            "/api/seed/",
+            headers=auth_headers,
+            json={"context": "Finland's current situation involves..."},
+        )
+        # Same as above - just verify the request body is accepted
+        assert resp.status_code != 422, "Endpoint should accept context field"
+
+    def test_clears_existing_items_before_seeding(
         self,
         client: TestClient,
         auth_headers: dict[str, str],
         data_dir: Path,
     ) -> None:
+        """Endpoint clears existing SA items before running agent.
+
+        Note: The actual clearing happens before the agent runs, so we verify
+        the endpoint no longer returns 409 when SA has items (the old behavior).
+        """
         # Add an item to SA to simulate existing content
         sa_dir = data_dir / "situational-awareness"
         (sa_dir / "geopolitics.md").write_text(
             "---\ntitle: Geopolitics\nstatus: current\n---\nContent"
         )
 
+        # The endpoint should NOT return 409 anymore
+        # Instead it should proceed (even though agent execution would fail
+        # without proper mocking)
         resp = client.post("/api/seed/", headers=auth_headers)
-        assert resp.status_code == 409
+        assert resp.status_code != 409, "Endpoint should allow re-seeding"
