@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, timezone
+from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -37,6 +38,15 @@ CascadeTriggerFn = Callable[..., Awaitable[Any]]
 
 # Type alias for idea generation callable
 IdeaGeneratorFn = Callable[..., Awaitable[Any]]
+
+
+@dataclass
+class TierResult:
+    """Result from running a heartbeat tier."""
+
+    escalated: bool
+    output: str
+    success: bool
 
 
 async def run_heartbeat(
@@ -71,7 +81,7 @@ async def run_heartbeat(
         # --- Tier 1: News Skim ---
         tier1_result = await _run_tier1(run_id, store, emitter, data_dir)
 
-        if not tier1_result["escalated"]:
+        if not tier1_result.escalated:
             # Nothing noteworthy — stop here
             store.complete_heartbeat_run(run_id)
             await emitter.emit(
@@ -83,10 +93,10 @@ async def run_heartbeat(
         # --- Tier 2: Triage Analysis ---
         tier2_result = await _run_tier2(
             run_id, store, emitter, data_dir,
-            flagged_items=tier1_result["output"],
+            flagged_items=tier1_result.output,
         )
 
-        if not tier2_result["escalated"]:
+        if not tier2_result.escalated:
             # No updates warranted — stop here
             store.complete_heartbeat_run(run_id)
             await emitter.emit(
@@ -98,11 +108,11 @@ async def run_heartbeat(
         # --- Tier 3: SA Update ---
         tier3_result = await _run_tier3(
             run_id, store, emitter, data_dir,
-            triage_assessment=tier2_result["output"],
+            triage_assessment=tier2_result.output,
         )
 
         # Tier 3 always escalates to Tier 4 on success
-        if not tier3_result["success"]:
+        if not tier3_result.success:
             # Tier 3 failed — stop here
             store.complete_heartbeat_run(run_id)
             await emitter.emit(
@@ -132,71 +142,78 @@ async def run_heartbeat(
 
 
 # ---------------------------------------------------------------------------
-# Tier 1 — News Skim
+# Shared tier execution helper
 # ---------------------------------------------------------------------------
 
 
-async def _run_tier1(
+async def _run_tier_agent(
     run_id: str,
+    tier: int,
+    agent_type: str,
+    agent_label: str,
+    prompt: str,
     store: PolicyStore,
     emitter: EventEmitter,
     data_dir: Path,
-) -> dict[str, Any]:
-    """Run Tier 1: news skim with Haiku.
+    *,
+    escalation_marker: str | None = None,
+    default_non_escalated_outcome: str = "",
+    always_escalate_on_success: bool = False,
+) -> TierResult:
+    """Run an agent for a heartbeat tier with standardized lifecycle handling.
+
+    This is the shared execution pattern for Tiers 1-3:
+    - Create agent run record
+    - Execute agent session
+    - Parse escalation from output
+    - Update heartbeat tier
+    - Emit tier completed event
+    - Handle errors consistently
+
+    Args:
+        run_id: Heartbeat run ID.
+        tier: Tier number (1, 2, or 3).
+        agent_type: Agent type string for model resolution and tracking.
+        agent_label: Human-readable agent label.
+        prompt: The prompt to send to the agent.
+        store: PolicyStore for persistence.
+        emitter: EventEmitter for broadcasting events.
+        data_dir: Root data directory.
+        escalation_marker: Marker text that, if present, means NO escalation.
+        default_non_escalated_outcome: Outcome text when not escalating.
+        always_escalate_on_success: If True, always escalate on success (Tier 3).
 
     Returns:
-        Dict with 'escalated' (bool), 'output' (str), and 'success' (bool).
+        TierResult with escalated, output, and success fields.
     """
     from policy_factory.agent.config import AgentConfig, resolve_model
-    from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
-    from policy_factory.data.layers import read_narrative
     from policy_factory.server.deps import get_anthropic_client
 
-    # Gather context
-    sa_summary = read_narrative(data_dir, "situational-awareness")
-    if not sa_summary:
-        sa_summary = "(No situational awareness content available yet.)"
+    model = resolve_model(agent_type)
 
-    current_date = date.today().isoformat()
-
-    # Build prompt
-    prompt = build_agent_prompt(
-        "heartbeat",
-        "skim",
-        current_date=current_date,
-        sa_summary=sa_summary,
-    )
-
-    # Resolve model
-    model = resolve_model("heartbeat-skim")
-
-    # Record agent run
     agent_run_id = store.create_agent_run(
         cascade_id=None,
-        agent_type="heartbeat-skim",
-        agent_label="Heartbeat — news skim",
+        agent_type=agent_type,
+        agent_label=agent_label,
         model=model,
         target_layer="situational-awareness",
     )
 
     try:
-        # Get shared Anthropic client
         client = get_anthropic_client()
 
-        # Create and run session
         config = AgentConfig(model=model)
         session = AgentSession(
             config=config,
             emitter=emitter,
             context_id=run_id,
-            agent_label="Heartbeat — news skim",
+            agent_label=agent_label,
             client=client,
             data_dir=data_dir,
         )
         result = await session.run(prompt)
 
-        # Record completion
         output_text = result.full_output or result.result_text or ""
         store.complete_agent_run(
             agent_run_id,
@@ -207,37 +224,41 @@ async def _run_tier1(
         )
 
         if result.is_error:
-            raise RuntimeError(f"Tier 1 agent error: {result.result_text}")
+            raise RuntimeError(f"Tier {tier} agent error: {result.result_text}")
 
-        # Parse: check for nothing-noteworthy marker
-        escalated = _NOTHING_NOTEWORTHY_MARKER not in output_text.upper()
-
-        if escalated:
-            outcome = _extract_outcome_summary(output_text, tier=1)
+        # Determine escalation
+        if always_escalate_on_success:
+            escalated = True
+        elif escalation_marker:
+            escalated = escalation_marker not in output_text.upper()
         else:
-            outcome = "No significant developments found"
+            escalated = False
 
-        # Update heartbeat record
+        # Determine outcome text
+        if escalated:
+            outcome = _extract_outcome_summary(output_text, tier=tier)
+        else:
+            outcome = default_non_escalated_outcome or f"Tier {tier} completed"
+
         store.update_heartbeat_tier(
-            run_id, tier=1, escalated=escalated,
+            run_id, tier=tier, escalated=escalated,
             outcome=outcome, agent_run_id=agent_run_id,
         )
 
-        # Emit tier completed event
         await emitter.emit(
             HeartbeatTierCompleted(
                 heartbeat_run_id=run_id,
-                tier=1,
+                tier=tier,
                 outcome=outcome,
                 escalated=escalated,
             )
         )
 
-        return {"escalated": escalated, "output": output_text, "success": True}
+        return TierResult(escalated=escalated, output=output_text, success=True)
 
     except Exception as exc:
         error_msg = str(exc)
-        logger.error("Heartbeat Tier 1 failed: %s", error_msg)
+        logger.error("Heartbeat Tier %d failed: %s", tier, error_msg)
 
         store.complete_agent_run(
             agent_run_id,
@@ -246,20 +267,62 @@ async def _run_tier1(
         )
 
         store.update_heartbeat_tier(
-            run_id, tier=1, escalated=False,
+            run_id, tier=tier, escalated=False,
             outcome=f"Failed: {error_msg}", agent_run_id=agent_run_id,
         )
 
         await emitter.emit(
             HeartbeatTierCompleted(
                 heartbeat_run_id=run_id,
-                tier=1,
+                tier=tier,
                 outcome=f"Failed: {error_msg}",
                 escalated=False,
             )
         )
 
-        return {"escalated": False, "output": "", "success": False}
+        return TierResult(escalated=False, output="", success=False)
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 — News Skim
+# ---------------------------------------------------------------------------
+
+
+async def _run_tier1(
+    run_id: str,
+    store: PolicyStore,
+    emitter: EventEmitter,
+    data_dir: Path,
+) -> TierResult:
+    """Run Tier 1: news skim with Haiku."""
+    from policy_factory.agent.prompts import build_agent_prompt
+    from policy_factory.data.layers import read_narrative
+
+    sa_summary = read_narrative(data_dir, "situational-awareness")
+    if not sa_summary:
+        sa_summary = "(No situational awareness content available yet.)"
+
+    current_date = date.today().isoformat()
+
+    prompt = build_agent_prompt(
+        "heartbeat",
+        "skim",
+        current_date=current_date,
+        sa_summary=sa_summary,
+    )
+
+    return await _run_tier_agent(
+        run_id=run_id,
+        tier=1,
+        agent_type="heartbeat-skim",
+        agent_label="Heartbeat — news skim",
+        prompt=prompt,
+        store=store,
+        emitter=emitter,
+        data_dir=data_dir,
+        escalation_marker=_NOTHING_NOTEWORTHY_MARKER,
+        default_non_escalated_outcome="No significant developments found",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -274,27 +337,15 @@ async def _run_tier2(
     data_dir: Path,
     *,
     flagged_items: str,
-) -> dict[str, Any]:
-    """Run Tier 2: triage analysis with Sonnet.
-
-    Args:
-        flagged_items: The flagged items text from Tier 1.
-
-    Returns:
-        Dict with 'escalated' (bool), 'output' (str), and 'success' (bool).
-    """
-    from policy_factory.agent.config import AgentConfig, resolve_model
+) -> TierResult:
+    """Run Tier 2: triage analysis with Sonnet."""
     from policy_factory.agent.prompts import build_agent_prompt
-    from policy_factory.agent.session import AgentSession
     from policy_factory.data.layers import read_narrative
-    from policy_factory.server.deps import get_anthropic_client
 
-    # Gather context
     sa_summary = read_narrative(data_dir, "situational-awareness")
     if not sa_summary:
         sa_summary = "(No situational awareness content available yet.)"
 
-    # Build prompt
     prompt = build_agent_prompt(
         "heartbeat",
         "triage",
@@ -302,98 +353,18 @@ async def _run_tier2(
         sa_summary=sa_summary,
     )
 
-    # Resolve model
-    model = resolve_model("heartbeat-triage")
-
-    # Record agent run
-    agent_run_id = store.create_agent_run(
-        cascade_id=None,
+    return await _run_tier_agent(
+        run_id=run_id,
+        tier=2,
         agent_type="heartbeat-triage",
         agent_label="Heartbeat — triage analysis",
-        model=model,
-        target_layer="situational-awareness",
+        prompt=prompt,
+        store=store,
+        emitter=emitter,
+        data_dir=data_dir,
+        escalation_marker=_NO_UPDATE_MARKER,
+        default_non_escalated_outcome="No SA updates warranted",
     )
-
-    try:
-        # Get shared Anthropic client
-        client = get_anthropic_client()
-
-        # Create and run session
-        config = AgentConfig(model=model)
-        session = AgentSession(
-            config=config,
-            emitter=emitter,
-            context_id=run_id,
-            agent_label="Heartbeat — triage analysis",
-            client=client,
-            data_dir=data_dir,
-        )
-        result = await session.run(prompt)
-
-        # Record completion
-        output_text = result.full_output or result.result_text or ""
-        store.complete_agent_run(
-            agent_run_id,
-            success=not result.is_error,
-            error_message=result.result_text if result.is_error else None,
-            cost=result.total_cost_usd,
-            output_text=result.full_output,
-        )
-
-        if result.is_error:
-            raise RuntimeError(f"Tier 2 agent error: {result.result_text}")
-
-        # Parse: check for no-update marker
-        escalated = _NO_UPDATE_MARKER not in output_text.upper()
-
-        if escalated:
-            outcome = _extract_outcome_summary(output_text, tier=2)
-        else:
-            outcome = "No SA updates warranted"
-
-        # Update heartbeat record
-        store.update_heartbeat_tier(
-            run_id, tier=2, escalated=escalated,
-            outcome=outcome, agent_run_id=agent_run_id,
-        )
-
-        # Emit tier completed event
-        await emitter.emit(
-            HeartbeatTierCompleted(
-                heartbeat_run_id=run_id,
-                tier=2,
-                outcome=outcome,
-                escalated=escalated,
-            )
-        )
-
-        return {"escalated": escalated, "output": output_text, "success": True}
-
-    except Exception as exc:
-        error_msg = str(exc)
-        logger.error("Heartbeat Tier 2 failed: %s", error_msg)
-
-        store.complete_agent_run(
-            agent_run_id,
-            success=False,
-            error_message=error_msg,
-        )
-
-        store.update_heartbeat_tier(
-            run_id, tier=2, escalated=False,
-            outcome=f"Failed: {error_msg}", agent_run_id=agent_run_id,
-        )
-
-        await emitter.emit(
-            HeartbeatTierCompleted(
-                heartbeat_run_id=run_id,
-                tier=2,
-                outcome=f"Failed: {error_msg}",
-                escalated=False,
-            )
-        )
-
-        return {"escalated": False, "output": "", "success": False}
 
 
 # ---------------------------------------------------------------------------
@@ -408,39 +379,24 @@ async def _run_tier3(
     data_dir: Path,
     *,
     triage_assessment: str,
-) -> dict[str, Any]:
-    """Run Tier 3: SA update with Opus.
-
-    Args:
-        triage_assessment: The triage assessment text from Tier 2.
-
-    Returns:
-        Dict with 'escalated' (bool — always True on success),
-        'output' (str), and 'success' (bool).
-    """
-    from policy_factory.agent.config import AgentConfig, resolve_model
+) -> TierResult:
+    """Run Tier 3: SA update with Opus."""
     from policy_factory.agent.prompts import build_agent_prompt
-    from policy_factory.agent.session import AgentSession
     from policy_factory.cascade.content import gather_layer_content
     from policy_factory.data.git import commit_changes
-    from policy_factory.server.deps import get_anthropic_client
 
-    # Gather SA layer content
     sa_content = gather_layer_content(data_dir, "situational-awareness")
 
-    # Gather pending feedback memos targeting the SA layer
     pending_memos = store.get_pending_memos("situational-awareness")
     if pending_memos:
-        memo_texts = []
-        for memo in pending_memos:
-            memo_texts.append(
-                f"- From {memo.source_layer}: {memo.content}"
-            )
+        memo_texts = [
+            f"- From {memo.source_layer}: {memo.content}"
+            for memo in pending_memos
+        ]
         feedback_text = "\n".join(memo_texts)
     else:
         feedback_text = "(No pending feedback memos targeting the SA layer.)"
 
-    # Build prompt
     prompt = build_agent_prompt(
         "heartbeat",
         "sa-update",
@@ -449,48 +405,21 @@ async def _run_tier3(
         feedback_memos=feedback_text,
     )
 
-    # Resolve model
-    model = resolve_model("heartbeat-sa-update")
-
-    # Record agent run
-    agent_run_id = store.create_agent_run(
-        cascade_id=None,
+    result = await _run_tier_agent(
+        run_id=run_id,
+        tier=3,
         agent_type="heartbeat-sa-update",
         agent_label="Heartbeat — SA update",
-        model=model,
-        target_layer="situational-awareness",
+        prompt=prompt,
+        store=store,
+        emitter=emitter,
+        data_dir=data_dir,
+        always_escalate_on_success=True,
+        default_non_escalated_outcome="SA layer updated successfully",
     )
 
-    try:
-        # Get shared Anthropic client
-        client = get_anthropic_client()
-
-        # Create and run session
-        config = AgentConfig(model=model)
-        session = AgentSession(
-            config=config,
-            emitter=emitter,
-            context_id=run_id,
-            agent_label="Heartbeat — SA update",
-            client=client,
-            data_dir=data_dir,
-        )
-        result = await session.run(prompt)
-
-        # Record completion
-        output_text = result.full_output or result.result_text or ""
-        store.complete_agent_run(
-            agent_run_id,
-            success=not result.is_error,
-            error_message=result.result_text if result.is_error else None,
-            cost=result.total_cost_usd,
-            output_text=result.full_output,
-        )
-
-        if result.is_error:
-            raise RuntimeError(f"Tier 3 agent error: {result.result_text}")
-
-        # Auto-commit changes
+    # Auto-commit changes on success
+    if result.success:
         try:
             commit_changes(
                 data_dir,
@@ -501,50 +430,7 @@ async def _run_tier3(
                 "Git commit failed after Tier 3 SA update: %s", git_exc
             )
 
-        outcome = "SA layer updated successfully"
-
-        # Tier 3 always escalates to Tier 4 on success
-        store.update_heartbeat_tier(
-            run_id, tier=3, escalated=True,
-            outcome=outcome, agent_run_id=agent_run_id,
-        )
-
-        await emitter.emit(
-            HeartbeatTierCompleted(
-                heartbeat_run_id=run_id,
-                tier=3,
-                outcome=outcome,
-                escalated=True,
-            )
-        )
-
-        return {"escalated": True, "output": output_text, "success": True}
-
-    except Exception as exc:
-        error_msg = str(exc)
-        logger.error("Heartbeat Tier 3 failed: %s", error_msg)
-
-        store.complete_agent_run(
-            agent_run_id,
-            success=False,
-            error_message=error_msg,
-        )
-
-        store.update_heartbeat_tier(
-            run_id, tier=3, escalated=False,
-            outcome=f"Failed: {error_msg}", agent_run_id=agent_run_id,
-        )
-
-        await emitter.emit(
-            HeartbeatTierCompleted(
-                heartbeat_run_id=run_id,
-                tier=3,
-                outcome=f"Failed: {error_msg}",
-                escalated=False,
-            )
-        )
-
-        return {"escalated": False, "output": "", "success": False}
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -560,15 +446,14 @@ async def _run_tier4(
     *,
     cascade_trigger: CascadeTriggerFn | None = None,
     idea_generator: IdeaGeneratorFn | None = None,
-) -> dict[str, Any]:
+) -> TierResult:
     """Run Tier 4: trigger cascade and idea generation.
 
     Both cascade and idea generation run asynchronously — Tier 4
     does not wait for them to complete.
 
     Returns:
-        Dict with 'escalated' (False — final tier), 'output' (str),
-        and 'success' (bool).
+        TierResult (escalated is always False — final tier).
     """
     outcome_parts: list[str] = []
 
@@ -633,7 +518,7 @@ async def _run_tier4(
         )
     )
 
-    return {"escalated": False, "output": outcome, "success": True}
+    return TierResult(escalated=False, output=outcome, success=True)
 
 
 # ---------------------------------------------------------------------------
