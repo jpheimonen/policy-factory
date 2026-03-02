@@ -89,7 +89,8 @@ test-unit:
 		--ignore=tests/test_integration_classifier.py \
 		--ignore=tests/test_integration_websocket.py \
 		--ignore=tests/test_integration_activity.py \
-		--ignore=tests/test_integration_frontend_backend.py
+		--ignore=tests/test_integration_frontend_backend.py \
+		--ignore=tests/test_integration_seeding.py
 
 # Run only backend integration tests
 test-integration:
