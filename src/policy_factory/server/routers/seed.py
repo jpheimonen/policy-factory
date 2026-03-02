@@ -255,7 +255,18 @@ async def seed_values(
     )
 
     # Get shared Anthropic client
-    client = get_anthropic_client()
+    try:
+        client = get_anthropic_client()
+    except RuntimeError as exc:
+        store.complete_agent_run(
+            agent_run_id,
+            success=False,
+            error_message=str(exc),
+        )
+        return ValuesSeedResponse(
+            success=False,
+            message=str(exc),
+        )
 
     # Run the values seed agent
     session = AgentSession(
@@ -456,7 +467,18 @@ async def trigger_seed(
     )
 
     # Get shared Anthropic client
-    client = get_anthropic_client()
+    try:
+        client = get_anthropic_client()
+    except RuntimeError as exc:
+        store.complete_agent_run(
+            agent_run_id,
+            success=False,
+            error_message=str(exc),
+        )
+        return SeedResponse(
+            success=False,
+            message=str(exc),
+        )
 
     # Run the seed agent
     session = AgentSession(

@@ -196,6 +196,9 @@ class TestClassifyInput:
         ), patch(
             "policy_factory.agent.prompts.build_agent_prompt",
             return_value="test prompt",
+        ), patch(
+            "policy_factory.server.deps.get_anthropic_client",
+            return_value=MagicMock(),
         ):
             mock_session_class.return_value = mock_session_instance
             result = await classify_input(
@@ -238,6 +241,9 @@ class TestClassifyInput:
         ), patch(
             "policy_factory.agent.prompts.build_agent_prompt",
             return_value="test prompt",
+        ), patch(
+            "policy_factory.server.deps.get_anthropic_client",
+            return_value=MagicMock(),
         ):
             mock_session_class.return_value = mock_session_instance
             result = await classify_input(

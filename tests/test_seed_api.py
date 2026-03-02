@@ -191,9 +191,9 @@ class TestTriggerSeed:
         # The actual agent execution would fail in tests without mocking
         # but the endpoint itself should handle the request
         resp = client.post("/api/seed/", headers=auth_headers)
-        # 200 success or any non-422 error means the body parsing succeeded
-        # (may fail on agent execution, but that's expected without mocking)
-        assert resp.status_code != 422, "Endpoint should accept empty body"
+        # 200 success or any non-422/401 error means the body parsing succeeded
+        # 500 is expected since ANTHROPIC_API_KEY is not set in tests
+        assert resp.status_code not in (422, 401), "Endpoint should accept empty body"
 
     def test_accepts_request_with_context(
         self,
@@ -207,7 +207,8 @@ class TestTriggerSeed:
             json={"context": "Finland's current situation involves..."},
         )
         # Same as above - just verify the request body is accepted
-        assert resp.status_code != 422, "Endpoint should accept context field"
+        # 500 is expected since ANTHROPIC_API_KEY is not set in tests
+        assert resp.status_code not in (422, 401), "Endpoint should accept context field"
 
     def test_clears_existing_items_before_seeding(
         self,
@@ -228,6 +229,6 @@ class TestTriggerSeed:
 
         # The endpoint should NOT return 409 anymore
         # Instead it should proceed (even though agent execution would fail
-        # without proper mocking)
+        # without proper mocking - 500 is expected for missing API key)
         resp = client.post("/api/seed/", headers=auth_headers)
         assert resp.status_code != 409, "Endpoint should allow re-seeding"

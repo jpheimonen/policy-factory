@@ -1,16 +1,14 @@
 """Tests for the critic runner and synthesis runner.
 
 Uses mock agent sessions to test the orchestration logic without
-actually calling the Claude SDK.
+actually calling the Anthropic SDK.
 """
 
 from __future__ import annotations
 
 import asyncio
-import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -73,18 +71,31 @@ class MockAgentResult:
     full_output: str = ""
 
 
-def _create_mock_sdk():
-    """Create a mock claude_agent_sdk module."""
-    mock_sdk = MagicMock()
+# ---------------------------------------------------------------------------
+# Mock helper for agent sessions with mocked Anthropic client
+# ---------------------------------------------------------------------------
 
-    class MockOptions:
-        def __init__(self, **kwargs):
-            for k, v in kwargs.items():
-                setattr(self, k, v)
 
-    mock_sdk.ClaudeAgentOptions = MockOptions
-    mock_sdk.ClaudeSDKClient = MagicMock()
-    return mock_sdk
+def create_mock_agent_patches(mock_run_fn):
+    """Create patches for AgentSession and get_anthropic_client.
+
+    This is needed because AgentSession requires an Anthropic client,
+    and we want to mock the entire agent execution flow.
+
+    Args:
+        mock_run_fn: Async function to use for AgentSession.run()
+
+    Returns:
+        Tuple of patch contexts to use with ExitStack or nested with statements
+    """
+    mock_session = MagicMock()
+    mock_session.run = AsyncMock(side_effect=mock_run_fn)
+    mock_client = MagicMock()
+
+    return (
+        patch("policy_factory.agent.session.AgentSession", return_value=mock_session),
+        patch("policy_factory.server.deps.get_anthropic_client", return_value=mock_client),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -233,23 +244,15 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """The critic runner launches all 6 critic agents."""
-        mock_sdk = _create_mock_sdk()
         call_count = 0
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             nonlocal call_count
             call_count += 1
-            return MockAgentResult(
-                full_output=f"Assessment {call_count}",
-            )
+            return MockAgentResult(full_output=f"Assessment {call_count}")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -268,20 +271,14 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """All 6 critics receive the same layer content."""
-        mock_sdk = _create_mock_sdk()
         prompts_received = []
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Assessment")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -300,20 +297,14 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Each critic uses its archetype-specific prompt template."""
-        mock_sdk = _create_mock_sdk()
         prompts_received = []
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Assessment")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -330,7 +321,6 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """CriticStarted and CriticCompleted events are emitted for each critic."""
-        mock_sdk = _create_mock_sdk()
         events_received = []
 
         async def capture_event(event):
@@ -338,16 +328,11 @@ class TestCriticRunner:
 
         emitter.subscribe(capture_event)
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Assessment")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -371,18 +356,11 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Each critic invocation is recorded as an agent run."""
-        mock_sdk = _create_mock_sdk()
-
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Assessment")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -399,18 +377,11 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Critic results are stored in the critic_results table."""
-        mock_sdk = _create_mock_sdk()
-
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Detailed assessment text")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -427,23 +398,17 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """If one critic fails, the remaining 5 still complete."""
-        mock_sdk = _create_mock_sdk()
         call_count = 0
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("API error")
             return MockAgentResult(full_output="Assessment")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -461,18 +426,11 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """If all 6 critics fail, the overall result reports failure."""
-        mock_sdk = _create_mock_sdk()
-
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             raise RuntimeError("All broken")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -490,23 +448,17 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """If at least one critic succeeds, overall success is True."""
-        mock_sdk = _create_mock_sdk()
         call_count = 0
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             nonlocal call_count
             call_count += 1
             if call_count <= 5:
                 raise RuntimeError("Failed")
             return MockAgentResult(full_output="Last one works")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -524,23 +476,17 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Critics run concurrently (not sequentially)."""
-        mock_sdk = _create_mock_sdk()
         import time
 
         start_times: list[float] = []
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             start_times.append(time.monotonic())
             await asyncio.sleep(0.05)  # Simulate work
             return MockAgentResult(full_output="Assessment")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             start = time.monotonic()
             await run_critics(
                 layer_slug="values",
@@ -561,20 +507,14 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Pre-gathered layer content is used when provided."""
-        mock_sdk = _create_mock_sdk()
         prompts_received = []
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Assessment")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -592,18 +532,11 @@ class TestCriticRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """CriticRunnerResult helper methods work correctly."""
-        mock_sdk = _create_mock_sdk()
-
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Assessment")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -664,19 +597,13 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Synthesis runs when all 6 critics succeeded."""
-        mock_sdk = _create_mock_sdk()
         critic_results = self._make_critic_results(6)
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Synthesis output")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -695,21 +622,15 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """The synthesis prompt includes all 6 critic assessments."""
-        mock_sdk = _create_mock_sdk()
         critic_results = self._make_critic_results(6)
         prompts_received = []
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Synthesis")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -730,21 +651,15 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """The synthesis prompt notes which critics failed."""
-        mock_sdk = _create_mock_sdk()
         critic_results = self._make_critic_results(4)  # 4 success, 2 failure
         prompts_received = []
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Synthesis")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -781,19 +696,13 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Synthesis runs even with only some critics successful."""
-        mock_sdk = _create_mock_sdk()
         critic_results = self._make_critic_results(3)
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Partial synthesis")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -810,7 +719,6 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """SynthesisStarted and SynthesisCompleted events are emitted."""
-        mock_sdk = _create_mock_sdk()
         critic_results = self._make_critic_results(6)
         events_received = []
 
@@ -819,16 +727,11 @@ class TestSynthesisRunner:
 
         emitter.subscribe(capture_event)
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Synthesis")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -849,19 +752,13 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Synthesis invocation is recorded as an agent run."""
-        mock_sdk = _create_mock_sdk()
         critic_results = self._make_critic_results(6)
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Synthesis")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -879,19 +776,13 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Synthesis result is stored in the synthesis_results table."""
-        mock_sdk = _create_mock_sdk()
         critic_results = self._make_critic_results(6)
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Stored synthesis")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -910,19 +801,13 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """Synthesis agent failure returns a failure result."""
-        mock_sdk = _create_mock_sdk()
         critic_results = self._make_critic_results(6)
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             raise RuntimeError("Synthesis crashed")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -940,8 +825,6 @@ class TestSynthesisRunner:
         self, store: PolicyStore, emitter: EventEmitter, data_dir: Path,
     ):
         """When critic_results is None, synthesis fetches from database."""
-        mock_sdk = _create_mock_sdk()
-
         # Pre-store some critic results in the database
         for archetype in get_archetype_slugs():
             store.store_critic_result(
@@ -954,16 +837,11 @@ class TestSynthesisRunner:
                 agent_run_id=f"run-{archetype}",
             )
 
-        async def mock_run(self, prompt):
+        async def mock_run(prompt):
             return MockAgentResult(full_output="Synthesis from DB results")
 
-        with (
-            patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-            patch(
-                "policy_factory.agent.session.AgentSession.run",
-                mock_run,
-            ),
-        ):
+        p1, p2 = create_mock_agent_patches(mock_run)
+        with p1, p2:
             result = await run_synthesis(
                 layer_slug="values",
                 critic_results=None,

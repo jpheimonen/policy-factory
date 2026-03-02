@@ -6,7 +6,6 @@ tier escalation, event emission, store recording, error handling.
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,25 +14,6 @@ import pytest
 
 from policy_factory.events import EventEmitter
 from policy_factory.store import PolicyStore
-
-
-# ---------------------------------------------------------------------------
-# Mock SDK setup (agent_sdk is not installed in test env)
-# ---------------------------------------------------------------------------
-
-
-def _create_mock_sdk():
-    """Build a mock claude_agent_sdk module for sys.modules patching."""
-    mock_module = MagicMock()
-
-    class MockOptions:
-        def __init__(self, **kwargs):
-            for k, v in kwargs.items():
-                setattr(self, k, v)
-
-    mock_module.ClaudeAgentOptions = MockOptions
-    mock_module.ClaudeSDKClient = MagicMock()
-    return mock_module
 
 
 @dataclass
@@ -45,6 +25,33 @@ class MockAgentResult:
     total_cost_usd: float | None = 0.01
     num_turns: int | None = 1
     full_output: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Mock helper for agent sessions with mocked Anthropic client
+# ---------------------------------------------------------------------------
+
+
+def create_mock_agent_patches(mock_run_fn):
+    """Create patches for AgentSession and get_anthropic_client.
+
+    This is needed because AgentSession requires an Anthropic client,
+    and we want to mock the entire agent execution flow.
+
+    Args:
+        mock_run_fn: Async function to use for AgentSession.run()
+
+    Returns:
+        Tuple of patch contexts to use with nested with statements
+    """
+    mock_session = MagicMock()
+    mock_session.run = AsyncMock(side_effect=mock_run_fn)
+    mock_client = MagicMock()
+
+    return (
+        patch("policy_factory.agent.session.AgentSession", return_value=mock_session),
+        patch("policy_factory.server.deps.get_anthropic_client", return_value=mock_client),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -109,20 +116,14 @@ async def test_tier1_nothing_noteworthy_stops(
 ) -> None:
     """Tier 1 returning NOTHING_NOTEWORTHY stops the heartbeat at Tier 1."""
     collector = EventCollector(emitter)
-    mock_sdk = _create_mock_sdk()
 
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         return MockAgentResult(
             full_output="STATUS: NOTHING_NOTEWORTHY\nNo significant developments found.",
         )
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -155,11 +156,10 @@ async def test_tier1_flags_items_escalates_to_tier2(
 ) -> None:
     """Tier 1 flagging items escalates to Tier 2."""
     collector = EventCollector(emitter)
-    mock_sdk = _create_mock_sdk()
 
     call_count = 0
 
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -172,13 +172,8 @@ async def test_tier1_flags_items_escalates_to_tier2(
             full_output="STATUS: NO_UPDATE_NEEDED\nAnalysis complete.",
         )
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -209,7 +204,6 @@ async def test_full_escalation_through_all_tiers(
 ) -> None:
     """Full escalation: Tier 1 → 2 → 3 → 4."""
     collector = EventCollector(emitter)
-    mock_sdk = _create_mock_sdk()
 
     outputs = [
         # Tier 1: flagged
@@ -221,7 +215,7 @@ async def test_full_escalation_through_all_tiers(
     ]
     call_count = 0
 
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         nonlocal call_count
         result = MockAgentResult(full_output=outputs[call_count])
         call_count += 1
@@ -230,16 +224,8 @@ async def test_full_escalation_through_all_tiers(
     mock_cascade = AsyncMock(return_value=("cascade-123", True))
     mock_idea_gen = AsyncMock(return_value=["idea-1"])
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-        patch(
-            "policy_factory.data.git.commit_changes",
-        ),
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2, patch("policy_factory.data.git.commit_changes"):
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -284,18 +270,12 @@ async def test_tier1_failure_stops_heartbeat(
 ) -> None:
     """A failed Tier 1 agent stops the heartbeat at Tier 1."""
     collector = EventCollector(emitter)
-    mock_sdk = _create_mock_sdk()
 
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         raise RuntimeError("API overloaded")
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -320,7 +300,6 @@ async def test_tier3_failure_prevents_tier4(
 ) -> None:
     """A failed Tier 3 prevents Tier 4 from running."""
     collector = EventCollector(emitter)
-    mock_sdk = _create_mock_sdk()
 
     outputs = [
         # Tier 1: flagged
@@ -330,7 +309,7 @@ async def test_tier3_failure_prevents_tier4(
     ]
     call_count = 0
 
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         nonlocal call_count
         if call_count < len(outputs):
             result = MockAgentResult(full_output=outputs[call_count])
@@ -341,13 +320,8 @@ async def test_tier3_failure_prevents_tier4(
 
     mock_cascade = AsyncMock()
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -376,8 +350,6 @@ async def test_tier4_cascade_queue_still_completes(
     store: PolicyStore, emitter: EventEmitter, data_dir: Path
 ) -> None:
     """If cascade trigger returns a queue entry, heartbeat still completes normally."""
-    mock_sdk = _create_mock_sdk()
-
     outputs = [
         "STATUS: FLAGGED\nITEMS:\n- Item",
         "STATUS: UPDATE_RECOMMENDED\nITEMS:\n- Do update",
@@ -385,7 +357,7 @@ async def test_tier4_cascade_queue_still_completes(
     ]
     call_count = 0
 
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         nonlocal call_count
         result = MockAgentResult(full_output=outputs[call_count])
         call_count += 1
@@ -394,16 +366,8 @@ async def test_tier4_cascade_queue_still_completes(
     # Cascade returns queue entry (is_cascade=False)
     mock_cascade = AsyncMock(return_value=("queue-entry-id", False))
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-        patch(
-            "policy_factory.data.git.commit_changes",
-        ),
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2, patch("policy_factory.data.git.commit_changes"):
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -425,20 +389,13 @@ async def test_heartbeat_records_agent_runs(
     store: PolicyStore, emitter: EventEmitter, data_dir: Path
 ) -> None:
     """Each tier's agent invocation is recorded in the agent_runs table."""
-    mock_sdk = _create_mock_sdk()
-
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         return MockAgentResult(
             full_output="STATUS: NOTHING_NOTEWORTHY\nNo news.",
         )
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         await run_heartbeat(
@@ -460,8 +417,6 @@ async def test_tier3_auto_commits(
     store: PolicyStore, emitter: EventEmitter, data_dir: Path
 ) -> None:
     """Tier 3 auto-commits data git repo changes on success."""
-    mock_sdk = _create_mock_sdk()
-
     outputs = [
         "STATUS: FLAGGED\nITEMS:\n- Item",
         "STATUS: UPDATE_RECOMMENDED\nITEMS:\n- Update",
@@ -469,22 +424,14 @@ async def test_tier3_auto_commits(
     ]
     call_count = 0
 
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         nonlocal call_count
         result = MockAgentResult(full_output=outputs[call_count])
         call_count += 1
         return result
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-        patch(
-            "policy_factory.data.git.commit_changes",
-        ) as mock_commit,
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2, patch("policy_factory.data.git.commit_changes") as mock_commit:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         await run_heartbeat(
@@ -513,8 +460,6 @@ async def test_tier3_receives_feedback_memos(
         content="Consider updating EU AI Act status",
     )
 
-    mock_sdk = _create_mock_sdk()
-
     outputs = [
         "STATUS: FLAGGED\nITEMS:\n- Item",
         "STATUS: UPDATE_RECOMMENDED\nITEMS:\n- Update",
@@ -523,23 +468,15 @@ async def test_tier3_receives_feedback_memos(
     call_count = 0
     captured_prompts = []
 
-    async def mock_run(self, prompt):
+    async def mock_run(prompt):
         nonlocal call_count
         captured_prompts.append(prompt)
         result = MockAgentResult(full_output=outputs[call_count])
         call_count += 1
         return result
 
-    with (
-        patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}),
-        patch(
-            "policy_factory.agent.session.AgentSession.run",
-            mock_run,
-        ),
-        patch(
-            "policy_factory.data.git.commit_changes",
-        ),
-    ):
+    p1, p2 = create_mock_agent_patches(mock_run)
+    with p1, p2, patch("policy_factory.data.git.commit_changes"):
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         await run_heartbeat(
