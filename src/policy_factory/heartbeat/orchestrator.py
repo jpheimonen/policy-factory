@@ -151,6 +151,7 @@ async def _run_tier1(
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
     from policy_factory.data.layers import read_narrative
+    from policy_factory.server.deps import get_anthropic_client
 
     # Gather context
     sa_summary = read_narrative(data_dir, "situational-awareness")
@@ -180,6 +181,9 @@ async def _run_tier1(
     )
 
     try:
+        # Get shared Anthropic client
+        client = get_anthropic_client()
+
         # Create and run session
         config = AgentConfig(model=model)
         session = AgentSession(
@@ -187,6 +191,7 @@ async def _run_tier1(
             emitter=emitter,
             context_id=run_id,
             agent_label="Heartbeat — news skim",
+            client=client,
             data_dir=data_dir,
         )
         result = await session.run(prompt)
@@ -282,6 +287,7 @@ async def _run_tier2(
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
     from policy_factory.data.layers import read_narrative
+    from policy_factory.server.deps import get_anthropic_client
 
     # Gather context
     sa_summary = read_narrative(data_dir, "situational-awareness")
@@ -309,6 +315,9 @@ async def _run_tier2(
     )
 
     try:
+        # Get shared Anthropic client
+        client = get_anthropic_client()
+
         # Create and run session
         config = AgentConfig(model=model)
         session = AgentSession(
@@ -316,6 +325,7 @@ async def _run_tier2(
             emitter=emitter,
             context_id=run_id,
             agent_label="Heartbeat — triage analysis",
+            client=client,
             data_dir=data_dir,
         )
         result = await session.run(prompt)
@@ -413,6 +423,7 @@ async def _run_tier3(
     from policy_factory.agent.session import AgentSession
     from policy_factory.cascade.content import gather_layer_content
     from policy_factory.data.git import commit_changes
+    from policy_factory.server.deps import get_anthropic_client
 
     # Gather SA layer content
     sa_content = gather_layer_content(data_dir, "situational-awareness")
@@ -451,6 +462,9 @@ async def _run_tier3(
     )
 
     try:
+        # Get shared Anthropic client
+        client = get_anthropic_client()
+
         # Create and run session
         config = AgentConfig(model=model)
         session = AgentSession(
@@ -458,6 +472,7 @@ async def _run_tier3(
             emitter=emitter,
             context_id=run_id,
             agent_label="Heartbeat — SA update",
+            client=client,
             data_dir=data_dir,
         )
         result = await session.run(prompt)

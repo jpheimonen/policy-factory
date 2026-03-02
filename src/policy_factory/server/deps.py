@@ -16,6 +16,7 @@ from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
 
 if TYPE_CHECKING:
+    from anthropic import AsyncAnthropic
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
     from policy_factory.cascade.controller import CascadeController
@@ -32,6 +33,8 @@ _event_emitter: EventEmitter | None = None
 _broadcast_handler: BroadcastHandler | None = None
 _data_dir: Path | None = None
 _scheduler: AsyncIOScheduler | None = None
+_anthropic_client: AsyncAnthropic | None = None
+_anthropic_client_initialized: bool = False  # Track if init was attempted
 
 # Cascade controller registry — maps cascade ID → controller instance
 _cascade_controllers: dict[str, CascadeController] = {}
@@ -60,6 +63,73 @@ def init_deps(
     _event_emitter = event_emitter
     _broadcast_handler = broadcast_handler
     _data_dir = data_dir
+
+
+def init_anthropic_client() -> AsyncAnthropic | None:
+    """Initialize the shared Anthropic client.
+
+    Reads the ANTHROPIC_API_KEY from environment. If the key is missing,
+    logs a warning and returns None (app continues to start, but agent
+    operations will fail with a clear error).
+
+    Returns:
+        The AsyncAnthropic client, or None if API key is missing.
+    """
+    global _anthropic_client, _anthropic_client_initialized
+    _anthropic_client_initialized = True
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        logger.warning(
+            "ANTHROPIC_API_KEY not set. Agent operations will not work. "
+            "Set the environment variable to enable AI features."
+        )
+        _anthropic_client = None
+        return None
+
+    # Import here to avoid startup failures if package is misconfigured
+    from anthropic import AsyncAnthropic
+
+    _anthropic_client = AsyncAnthropic(api_key=api_key)
+    logger.info("Anthropic client initialized")
+    return _anthropic_client
+
+
+async def shutdown_anthropic_client() -> None:
+    """Shut down the Anthropic client, releasing any connections.
+
+    Called during FastAPI shutdown to clean up resources.
+    """
+    global _anthropic_client
+    if _anthropic_client is not None:
+        try:
+            await _anthropic_client.close()
+            logger.info("Anthropic client closed")
+        except Exception:
+            logger.exception("Error closing Anthropic client")
+        finally:
+            _anthropic_client = None
+
+
+def get_anthropic_client() -> AsyncAnthropic:
+    """Get the shared Anthropic client.
+
+    Returns:
+        The AsyncAnthropic client instance.
+
+    Raises:
+        RuntimeError: If the client was not initialized (API key missing).
+    """
+    if not _anthropic_client_initialized:
+        raise RuntimeError(
+            "Anthropic client not initialized - call init_anthropic_client() first"
+        )
+    if _anthropic_client is None:
+        raise RuntimeError(
+            "Anthropic API key not configured. Set the ANTHROPIC_API_KEY "
+            "environment variable to enable agent operations."
+        )
+    return _anthropic_client
 
 
 def get_store() -> PolicyStore:

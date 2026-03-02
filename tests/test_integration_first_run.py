@@ -1,7 +1,8 @@
 """Integration tests for first-run initialization.
 
 Tests that starting the app with no data directory creates the full
-directory structure, git repo, and pre-seeded values files.
+directory structure and git repo. Values are no longer pre-seeded;
+they are populated via explicit seeding with POST /api/seed/values.
 """
 
 from __future__ import annotations
@@ -61,18 +62,17 @@ class TestFirstRunInitialization:
         for slug in LAYER_SLUGS:
             assert (data_dir / slug).is_dir(), f"Missing layer directory: {slug}"
 
-        # Verify pre-seeded values files exist
+        # Verify values directory exists but is empty (except for README.md)
+        # Values are now populated via explicit seeding, not pre-seeded
         values_dir = data_dir / "values"
         value_files = list(values_dir.glob("*.md"))
-        # Should have README.md plus at least a few seed values
+        # Should have only README.md placeholder — no pre-seeded values
         non_readme = [f for f in value_files if f.name != "README.md"]
-        assert len(non_readme) > 0, "No pre-seeded values files found"
+        assert len(non_readme) == 0, "Values directory should be empty after initialization"
 
-        # Verify seed files have valid frontmatter
-        for vf in non_readme:
-            content = vf.read_text()
-            assert content.startswith("---"), f"Missing frontmatter in {vf.name}"
-            assert "title:" in content, f"Missing title in frontmatter of {vf.name}"
+        # Verify README.md exists in values directory
+        readme = values_dir / "README.md"
+        assert readme.exists(), "Missing README.md in values directory"
 
     def test_existing_data_directory_not_overwritten(self, tmp_path: Path) -> None:
         """Start with an existing populated data directory — verify not re-initialized."""

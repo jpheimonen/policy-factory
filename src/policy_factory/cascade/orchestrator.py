@@ -222,6 +222,7 @@ async def _default_generation_runner(
     from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
+    from policy_factory.server.deps import get_anthropic_client
 
     # Gather context from lower layers
     context = _gather_generation_context(data_dir, layer_slug, user_context)
@@ -240,7 +241,6 @@ async def _default_generation_runner(
 
     # Create agent config
     config = AgentConfig(
-        cwd=data_dir,
         model=model,
     )
 
@@ -254,12 +254,17 @@ async def _default_generation_runner(
         target_layer=layer_slug,
     )
 
+    # Get shared Anthropic client
+    client = get_anthropic_client()
+
     # Create and run the session
     session = AgentSession(
         config=config,
         emitter=emitter,
         context_id=cascade_id,
         agent_label=agent_label,
+        client=client,
+        data_dir=data_dir,
     )
 
     try:

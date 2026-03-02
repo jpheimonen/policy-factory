@@ -182,6 +182,7 @@ async def _run_scoring(
     from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
+    from policy_factory.server.deps import get_anthropic_client
 
     model = resolve_model("idea-evaluator")
 
@@ -203,15 +204,19 @@ async def _run_scoring(
         )
 
         config = AgentConfig(
-            cwd=data_dir,
             model=model,
         )
+
+        # Get shared Anthropic client
+        client = get_anthropic_client()
 
         session = AgentSession(
             config=config,
             emitter=emitter,
             context_id=idea.id,
             agent_label="Idea evaluator",
+            client=client,
+            data_dir=data_dir,
         )
 
         result = await session.run(prompt)

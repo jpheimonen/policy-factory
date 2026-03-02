@@ -193,6 +193,7 @@ async def _run_single_critic(
     from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
+    from policy_factory.server.deps import get_anthropic_client
 
     # Emit start event
     await emitter.emit(
@@ -227,9 +228,11 @@ async def _run_single_critic(
 
         # Create agent config
         config = AgentConfig(
-            cwd=data_dir,
             model=model,
         )
+
+        # Get shared Anthropic client
+        client = get_anthropic_client()
 
         # Create and run the session
         session = AgentSession(
@@ -237,6 +240,8 @@ async def _run_single_critic(
             emitter=emitter,
             context_id=cascade_id or "",
             agent_label=archetype.agent_label,
+            client=client,
+            data_dir=data_dir,
         )
 
         result = await session.run(prompt)

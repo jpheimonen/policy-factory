@@ -17,7 +17,13 @@ from policy_factory.auth import decode_access_token
 from policy_factory.data.init import get_data_dir, initialize_data_directory
 from policy_factory.events import EventEmitter
 from policy_factory.server.broadcast import BroadcastHandler
-from policy_factory.server.deps import init_deps, init_scheduler, shutdown_scheduler
+from policy_factory.server.deps import (
+    init_anthropic_client,
+    init_deps,
+    init_scheduler,
+    shutdown_anthropic_client,
+    shutdown_scheduler,
+)
 from policy_factory.server.routers import (
     activity_router,
     auth_router,
@@ -73,6 +79,9 @@ def create_app(
             logger.exception("Failed to initialize data directory at %s", resolved_data_dir)
             raise
 
+        # Startup: initialize the Anthropic client (logs warning if API key missing)
+        init_anthropic_client()
+
         # Create broadcast handler if store is available and no handler was passed
         _broadcast_handler = broadcast_handler
         if _broadcast_handler is None and store is not None:
@@ -107,6 +116,9 @@ def create_app(
 
         # Shutdown: stop the scheduler
         shutdown_scheduler()
+
+        # Shutdown: close the Anthropic client
+        await shutdown_anthropic_client()
 
         # Shutdown: cleanup broadcast handler
         if _broadcast_handler is not None:

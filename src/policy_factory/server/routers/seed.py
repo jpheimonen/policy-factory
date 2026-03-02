@@ -29,6 +29,7 @@ from policy_factory.cascade.orchestrator import trigger_cascade
 from policy_factory.data.git import commit_changes
 from policy_factory.data.layers import delete_item, list_items, write_item
 from policy_factory.server.deps import (
+    get_anthropic_client,
     get_current_user,
     get_data_dir,
     get_event_emitter,
@@ -256,12 +257,16 @@ async def seed_values(
         target_layer="values",
     )
 
+    # Get shared Anthropic client
+    client = get_anthropic_client()
+
     # Run the values seed agent
     session = AgentSession(
         config=config,
         emitter=emitter,
         context_id="values-seed",
         agent_label=agent_label,
+        client=client,
         data_dir=data_dir,
     )
 
@@ -453,12 +458,16 @@ async def trigger_seed(
         target_layer="situational-awareness",
     )
 
+    # Get shared Anthropic client
+    client = get_anthropic_client()
+
     # Run the seed agent
     session = AgentSession(
         config=config,
         emitter=emitter,
         context_id="seed",
         agent_label=agent_label,
+        client=client,
         data_dir=data_dir,
     )
 

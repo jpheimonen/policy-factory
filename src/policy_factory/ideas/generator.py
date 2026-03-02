@@ -50,6 +50,7 @@ async def generate_ideas(
     from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
+    from policy_factory.server.deps import get_anthropic_client
 
     # Step 1: Emit start event
     await emitter.emit(IdeaGenerationStarted())
@@ -81,15 +82,19 @@ async def generate_ideas(
         )
 
         config = AgentConfig(
-            cwd=data_dir,
             model=model,
         )
+
+        # Get shared Anthropic client
+        client = get_anthropic_client()
 
         session = AgentSession(
             config=config,
             emitter=emitter,
             context_id="idea-generation",
             agent_label="Idea generator",
+            client=client,
+            data_dir=data_dir,
         )
 
         result = await session.run(prompt)
