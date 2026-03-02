@@ -56,10 +56,23 @@ class SeedResponse(BaseModel):
 
 
 class SeedStatusResponse(BaseModel):
-    """Response for the seed status endpoint."""
+    """Response for the seed status endpoint.
 
-    seeded: bool
-    item_count: int = 0
+    Reports the seeding status of both foundational layers (values and
+    situational awareness). The UI can use this to display whether each
+    layer has been seeded and how many items each contains.
+
+    Attributes:
+        values_seeded: Whether the values layer has any items.
+        values_count: Number of items in the values layer.
+        sa_seeded: Whether the situational awareness layer has any items.
+        sa_count: Number of items in the situational awareness layer.
+    """
+
+    values_seeded: bool
+    values_count: int = 0
+    sa_seeded: bool
+    sa_count: int = 0
 
 
 class SeedRequest(BaseModel):
@@ -80,22 +93,6 @@ class ValuesSeedResponse(BaseModel):
     success: bool
     values_created: int = 0
     message: str = ""
-
-
-# ---------------------------------------------------------------------------
-# Helper: check if SA layer has been seeded
-# ---------------------------------------------------------------------------
-
-
-def _is_seeded(data_dir: Path) -> tuple[bool, int]:
-    """Check whether the SA layer already has content beyond pre-seeded items.
-
-    Returns:
-        Tuple of (is_seeded, item_count).
-    """
-    items = list_items(data_dir, "situational-awareness")
-    # If there are any items, consider it seeded
-    return len(items) > 0, len(items)
 
 
 # ---------------------------------------------------------------------------
@@ -530,7 +527,30 @@ async def trigger_seed(
 async def get_seed_status(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
 ) -> SeedStatusResponse:
-    """Check whether seeding has been performed."""
+    """Check the seeding status of both values and SA layers.
+
+    Returns the count and seeded status for both foundational layers:
+    - Values layer: Contains axiomatic Finnish policy values
+    - Situational Awareness layer: Contains current tech policy landscape
+
+    Returns:
+        SeedStatusResponse with counts and seeded flags for both layers.
+    """
     data_dir = get_data_dir()
-    seeded, count = _is_seeded(data_dir)
-    return SeedStatusResponse(seeded=seeded, item_count=count)
+
+    # Check values layer
+    values_items = list_items(data_dir, "values")
+    values_count = len(values_items)
+    values_seeded = values_count > 0
+
+    # Check SA layer
+    sa_items = list_items(data_dir, "situational-awareness")
+    sa_count = len(sa_items)
+    sa_seeded = sa_count > 0
+
+    return SeedStatusResponse(
+        values_seeded=values_seeded,
+        values_count=values_count,
+        sa_seeded=sa_seeded,
+        sa_count=sa_count,
+    )

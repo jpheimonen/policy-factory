@@ -79,21 +79,51 @@ class TestSeedStatus:
         resp = client.get("/api/seed/status")
         assert resp.status_code == 401
 
-    def test_returns_not_seeded_for_empty_sa(
+    def test_returns_not_seeded_for_empty_layers(
         self, client: TestClient, auth_headers: dict[str, str]
     ) -> None:
+        """Status shows both layers as not seeded when empty."""
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["seeded"] is False
-        assert data["item_count"] == 0
+        # Values layer
+        assert data["values_seeded"] is False
+        assert data["values_count"] == 0
+        # SA layer
+        assert data["sa_seeded"] is False
+        assert data["sa_count"] == 0
 
-    def test_returns_seeded_when_sa_has_items(
+    def test_returns_values_seeded_when_values_has_items(
         self,
         client: TestClient,
         auth_headers: dict[str, str],
         data_dir: Path,
     ) -> None:
+        """Status correctly reflects populated values layer."""
+        # Add items to values layer
+        values_dir = data_dir / "values"
+        (values_dir / "national-security.md").write_text(
+            "---\ntitle: National Security\n---\nSecurity is paramount."
+        )
+        (values_dir / "economic-prosperity.md").write_text(
+            "---\ntitle: Economic Prosperity\n---\nProsperity matters."
+        )
+
+        resp = client.get("/api/seed/status", headers=auth_headers)
+        data = resp.json()
+        assert data["values_seeded"] is True
+        assert data["values_count"] == 2
+        # SA still empty
+        assert data["sa_seeded"] is False
+        assert data["sa_count"] == 0
+
+    def test_returns_sa_seeded_when_sa_has_items(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Status correctly reflects populated SA layer."""
         # Add an item to SA
         sa_dir = data_dir / "situational-awareness"
         (sa_dir / "geopolitics.md").write_text(
@@ -102,8 +132,41 @@ class TestSeedStatus:
 
         resp = client.get("/api/seed/status", headers=auth_headers)
         data = resp.json()
-        assert data["seeded"] is True
-        assert data["item_count"] == 1
+        # Values still empty
+        assert data["values_seeded"] is False
+        assert data["values_count"] == 0
+        # SA has items
+        assert data["sa_seeded"] is True
+        assert data["sa_count"] == 1
+
+    def test_returns_both_seeded_when_both_have_items(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Status correctly reflects when both layers are populated."""
+        # Add items to values layer
+        values_dir = data_dir / "values"
+        (values_dir / "security.md").write_text(
+            "---\ntitle: Security\n---\nContent"
+        )
+
+        # Add items to SA layer
+        sa_dir = data_dir / "situational-awareness"
+        (sa_dir / "geopolitics.md").write_text(
+            "---\ntitle: Geopolitics\n---\nContent"
+        )
+        (sa_dir / "technology.md").write_text(
+            "---\ntitle: Technology\n---\nContent"
+        )
+
+        resp = client.get("/api/seed/status", headers=auth_headers)
+        data = resp.json()
+        assert data["values_seeded"] is True
+        assert data["values_count"] == 1
+        assert data["sa_seeded"] is True
+        assert data["sa_count"] == 2
 
 
 # ---------------------------------------------------------------------------
