@@ -13,7 +13,7 @@ Task 0001 built the complete Policy Factory application shell, but the agent fra
 | [005](005.md) | Update generator prompt templates | [x] | Adjust prompts to reference tool usage instead of direct file access |
 | [006](006.md) | Create values seed prompt | [x] | New prompt template for axiomatic values synthesis using Claude's knowledge |
 | [007](007.md) | Implement values seed endpoint | [x] | New POST /api/seed/values endpoint with direct file writing |
-| [008](008.md) | Fix SA seed endpoint | [ ] | Remove 409 guard, add context parameter, clear before reseeding |
+| [008](008.md) | Fix SA seed endpoint | [x] | Remove 409 guard, add context parameter, clear before reseeding |
 | [009](009.md) | Update data initialization | [ ] | Remove pre-seeded values writing, leave values directory empty |
 | [010](010.md) | Create shared Anthropic client | [ ] | Initialize AsyncAnthropic during FastAPI lifespan startup |
 | [011](011.md) | Update seed status endpoint | [ ] | Report both values and SA item counts |
