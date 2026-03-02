@@ -1,0 +1,7 @@
+start_services: |
+  Run `make dev` to start the development server.
+  This launches the FastAPI backend (auto-detected port, usually 8765) and attempts to start the Vite frontend dev server concurrently.
+  If Node.js >= 20.19 is available, the frontend dev server runs on http://localhost:5173 with hot reload.
+  Otherwise, the built frontend is served by the backend directly.
+  The app will be available at http://localhost:8771 (or whichever port the backend auto-detects).
+  API health check: GET /api/health/check
