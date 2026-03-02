@@ -165,7 +165,11 @@ async def test_tier1_flags_items_escalates_to_tier2(
         if call_count == 1:
             # Tier 1: flagged items
             return MockAgentResult(
-                full_output="STATUS: FLAGGED\nITEMS:\n- EU AI Act enforcement begins\n- Finland cyber report",
+                full_output=(
+                    "STATUS: FLAGGED\nITEMS:\n"
+                    "- EU AI Act enforcement begins\n"
+                    "- Finland cyber report"
+                ),
             )
         # Tier 2: no updates
         return MockAgentResult(
@@ -269,7 +273,7 @@ async def test_tier1_failure_stops_heartbeat(
     store: PolicyStore, emitter: EventEmitter, data_dir: Path
 ) -> None:
     """A failed Tier 1 agent stops the heartbeat at Tier 1."""
-    collector = EventCollector(emitter)
+    _ = EventCollector(emitter)  # collector not used directly but sets up event handling
 
     async def mock_run(prompt):
         raise RuntimeError("API overloaded")
@@ -299,7 +303,7 @@ async def test_tier3_failure_prevents_tier4(
     store: PolicyStore, emitter: EventEmitter, data_dir: Path
 ) -> None:
     """A failed Tier 3 prevents Tier 4 from running."""
-    collector = EventCollector(emitter)
+    _ = EventCollector(emitter)  # collector not used directly but sets up event handling
 
     outputs = [
         # Tier 1: flagged

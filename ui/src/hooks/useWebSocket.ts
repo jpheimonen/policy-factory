@@ -64,6 +64,7 @@ export function useWebSocket(): WebSocketState {
   const lastEventIdRef = useRef<number>(0);
   const seenIdsRef = useRef<Set<number>>(new Set());
   const mountedRef = useRef(true);
+  const connectRef = useRef<() => void>(() => {});
 
   const dispatch = useEventDispatch();
 
@@ -200,7 +201,7 @@ export function useWebSocket(): WebSocketState {
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null;
         if (!intentionalCloseRef.current && mountedRef.current) {
-          connect();
+          connectRef.current();
         }
       }, delay);
     };
@@ -237,6 +238,11 @@ export function useWebSocket(): WebSocketState {
       }
     };
   }, [dispatch, processEvent, replayMissedEvents]);
+
+  // Keep the ref in sync with the latest connect function (in an effect to avoid render-time updates)
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   /** Manual reconnect — resets attempt counter and tries again. */
   const reconnect = useCallback(() => {

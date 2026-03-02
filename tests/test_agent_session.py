@@ -25,7 +25,6 @@ from policy_factory.agent.session import (
 )
 from policy_factory.events import AgentTextChunk, EventEmitter
 
-
 # ---------------------------------------------------------------------------
 # Mock helpers for Anthropic SDK streaming
 # ---------------------------------------------------------------------------
@@ -587,7 +586,7 @@ class TestAgentSessionToolExecution:
         session = AgentSession(
             config, emitter, client=mock_client, data_dir=data_dir
         )
-        result = await session.run("Read the test file")
+        await session.run("Read the test file")
 
         # Verify the API was called twice (once per turn)
         calls = mock_client.messages.stream.call_args_list
@@ -637,7 +636,7 @@ class TestAgentSessionToolExecution:
         mock_client = create_mock_anthropic_client([tool_events, final_events])
 
         session = AgentSession(config, emitter, client=mock_client)
-        result = await session.run("Do something")
+        await session.run("Do something")
 
         # Verify the tool result contained an error
         calls = mock_client.messages.stream.call_args_list

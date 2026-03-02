@@ -33,7 +33,6 @@ from policy_factory.agent.tools import (
     write_file,
 )
 
-
 # ---------------------------------------------------------------------------
 # Path validation tests
 # ---------------------------------------------------------------------------
@@ -507,7 +506,9 @@ class TestToolDefinitions:
         """All tools have non-empty descriptions."""
         for tool in FILE_TOOLS:
             assert tool.get("description"), f"Tool {tool.get('name')} has no description"
-            assert len(tool["description"]) > 10, f"Tool {tool.get('name')} has too short description"
+            assert len(tool["description"]) > 10, (
+                f"Tool {tool.get('name')} has too short description"
+            )
 
     def test_path_properties_have_descriptions(self) -> None:
         """All path properties have descriptions with examples."""

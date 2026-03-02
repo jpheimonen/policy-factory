@@ -15,11 +15,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from policy_factory.server.deps import (
+    _get_heartbeat_interval_hours,
     get_data_dir,
     get_event_emitter,
     get_scheduler,
     get_store,
-    _get_heartbeat_interval_hours,
 )
 from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic

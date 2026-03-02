@@ -28,7 +28,6 @@ from policy_factory.cascade.synthesis_runner import (
 from policy_factory.events import EventEmitter
 from policy_factory.store import PolicyStore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

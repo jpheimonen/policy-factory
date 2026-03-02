@@ -89,7 +89,7 @@ class TestInputClassification:
             "policy_factory.server.routers.cascade.trigger_cascade",
             new_callable=AsyncMock,
             return_value=("cascade-123", True),
-        ) as mock_trigger:
+        ):
             resp = client.post(
                 "/api/cascade/trigger",
                 json={"input_text": "Finland should strengthen its strategic defense capabilities"},

@@ -6,11 +6,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from policy_factory.events import EventEmitter
 from policy_factory.store import PolicyStore
-
 
 # ---------------------------------------------------------------------------
 # Tests for scheduler configuration
@@ -99,10 +96,9 @@ class TestSchedulerConfig:
 
     def test_get_scheduler_returns_none_before_init(self) -> None:
         """get_scheduler returns None before initialization."""
-        from policy_factory.server.deps import get_scheduler
-
         # Reset global state
         import policy_factory.server.deps as deps
+        from policy_factory.server.deps import get_scheduler
         original = deps._scheduler
         deps._scheduler = None
 
@@ -113,9 +109,8 @@ class TestSchedulerConfig:
 
     def test_shutdown_scheduler_is_safe_when_none(self) -> None:
         """Shutting down a None scheduler is a no-op."""
-        from policy_factory.server.deps import shutdown_scheduler
-
         import policy_factory.server.deps as deps
+        from policy_factory.server.deps import shutdown_scheduler
         original = deps._scheduler
         deps._scheduler = None
 

@@ -21,7 +21,6 @@ from policy_factory.server.app import create_app
 from policy_factory.server.ws import ConnectionManager
 from policy_factory.store import PolicyStore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

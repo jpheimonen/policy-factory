@@ -15,7 +15,6 @@ from policy_factory.auth import create_access_token, hash_password
 from policy_factory.server.app import create_app
 from policy_factory.store import PolicyStore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

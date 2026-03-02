@@ -122,14 +122,14 @@ class TestWebSocketEventReplay:
     ) -> None:
         """Verify the replay endpoint returns events since a given ID."""
         # Add some events to the store
-        event_id_1 = store.add_event(
+        store.add_event(
             event_type="cascade_started",
             data={"cascade_id": "test-1"},
             timestamp=datetime.now(timezone.utc),
             layer_slug="values",
             category="cascade",
         )
-        event_id_2 = store.add_event(
+        store.add_event(
             event_type="cascade_completed",
             data={"cascade_id": "test-1"},
             timestamp=datetime.now(timezone.utc),

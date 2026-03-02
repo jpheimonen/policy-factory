@@ -18,7 +18,6 @@ import logging
 import re
 import unicodedata
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Annotated
 
 import yaml

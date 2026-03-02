@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,7 +27,6 @@ from policy_factory.events import EventEmitter
 from policy_factory.server.app import create_app
 from policy_factory.server.ws import ConnectionManager
 from policy_factory.store import PolicyStore
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

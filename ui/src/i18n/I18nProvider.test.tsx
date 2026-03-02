@@ -3,7 +3,7 @@
  * interpolation, missing key handling, and testing utilities.
  */
 import { describe, it, expect, vi } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { I18nProvider, useTranslation } from "@/i18n/I18nProvider.tsx";

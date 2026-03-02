@@ -85,7 +85,9 @@ class TestCriticArchetypes:
         """Each archetype slug should correspond to a prompt template file."""
         from pathlib import Path
 
-        prompts_dir = Path(__file__).parent.parent / "src" / "policy_factory" / "prompts" / "critics"
+        prompts_dir = (
+            Path(__file__).parent.parent / "src" / "policy_factory" / "prompts" / "critics"
+        )
         for archetype in CRITIC_ARCHETYPES:
             template_path = prompts_dir / f"{archetype.slug}.md"
             assert template_path.exists(), (

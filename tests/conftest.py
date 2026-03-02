@@ -9,7 +9,6 @@ Provides reusable fixtures for:
 
 from __future__ import annotations
 
-import os
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -24,10 +23,8 @@ from policy_factory.data.init import initialize_data_directory
 from policy_factory.data.layers import LAYER_SLUGS
 from policy_factory.events import EventEmitter
 from policy_factory.server.app import create_app
-from policy_factory.server.broadcast import BroadcastHandler
 from policy_factory.server.ws import ConnectionManager
 from policy_factory.store import PolicyStore
-
 
 # ---------------------------------------------------------------------------
 # Basic fixtures (preserved from original for backward compatibility)

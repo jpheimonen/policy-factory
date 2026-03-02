@@ -6,12 +6,10 @@ error handling (pause/resume/cancel), and WebSocket event flow.
 
 from __future__ import annotations
 
-import asyncio
-import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,7 +21,6 @@ from policy_factory.events import EventEmitter
 from policy_factory.server.app import create_app
 from policy_factory.server.ws import ConnectionManager
 from policy_factory.store import PolicyStore
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -128,9 +125,10 @@ class TestCascadeFromValues:
         store: PolicyStore,
     ) -> None:
         """Trigger a values-layer cascade and verify all layers are processed."""
-        gen_runner = _noop_generation_runner()
-        critic_runner = _noop_critic_runner()
-        synthesis_runner = _noop_synthesis_runner()
+        # Create mock runners (not directly used but available for patching)
+        _noop_generation_runner()
+        _noop_critic_runner()
+        _noop_synthesis_runner()
 
         with patch(
             "policy_factory.server.routers.cascade.trigger_cascade",
