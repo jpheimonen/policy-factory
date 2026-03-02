@@ -16,7 +16,7 @@ Task 0001 built the complete Policy Factory application shell, but the agent fra
 | [008](008.md) | Fix SA seed endpoint | [x] | Remove 409 guard, add context parameter, clear before reseeding |
 | [009](009.md) | Update data initialization | [x] | Remove pre-seeded values writing, leave values directory empty |
 | [010](010.md) | Create shared Anthropic client | [x] | Initialize AsyncAnthropic during FastAPI lifespan startup |
-| [011](011.md) | Update seed status endpoint | [ ] | Report both values and SA item counts |
+| [011](011.md) | Update seed status endpoint | [x] | Report both values and SA item counts |
 | [012](012.md) | Rewrite agent session tests | [ ] | Replace claude_agent_sdk mocks with Anthropic SDK mocks |
 | [013](013.md) | Add file tools tests | [ ] | Unit tests for all file tools and sandbox validation |
 | [014](014.md) | Add seeding integration tests | [ ] | Test seeding flows and cascade integration with mocked agent |
