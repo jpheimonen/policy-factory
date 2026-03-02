@@ -31,7 +31,7 @@ Tactical objectives translate strategy into action. They must be specific enough
 
 ## Instructions
 
-1. **Read** all existing markdown files in the `tactical-objectives/` directory.
+1. **Use `list_files`** to see all files in the `tactical-objectives/` directory, then **use `read_file`** to examine each one.
 2. **Derive** tactical objectives that advance the strategic objectives. Each tactical objective should:
    - Reference the strategic objective(s) it serves
    - Have a 1-5 year time horizon
@@ -39,8 +39,8 @@ Tactical objectives translate strategy into action. They must be specific enough
    - Include clear success metrics
    - Consider resource requirements and institutional capacity
 3. **Incorporate** feedback memos from the policy layer (policies may have identified tactical objectives that are impractical, duplicative, or missing).
-4. **Create, update, or remove** markdown files as needed.
-5. **Regenerate** the `tactical-objectives/README.md` narrative summary.
+4. **Use `write_file`** to create or update markdown files as needed. **Use `delete_file`** to remove items that are no longer relevant.
+5. **Use `write_file`** to regenerate the `tactical-objectives/README.md` narrative summary.
 6. **Produce feedback memos** for layers below if you discover:
    - Strategic objectives that cannot be broken into actionable tactics
    - Situational factors not reflected in the SA layer

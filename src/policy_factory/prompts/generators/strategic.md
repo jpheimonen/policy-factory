@@ -31,7 +31,7 @@ Strategic objectives bridge the gap between "what we value" and "what we should 
 
 ## Instructions
 
-1. **Read** all existing markdown files in the `strategic-objectives/` directory.
+1. **Use `list_files`** to see all files in the `strategic-objectives/` directory, then **use `read_file`** to examine each one.
 2. **Derive** strategic objectives that serve Finland's values while accounting for the current situation. Each objective should:
    - Clearly reference which values it serves
    - Be grounded in the situational assessment
@@ -39,8 +39,8 @@ Strategic objectives bridge the gap between "what we value" and "what we should 
    - Be measurable or at least assessable
    - Be ambitious but realistic given Finland's position and resources
 3. **Incorporate** feedback memos from higher layers (tactical and policy layers may have identified strategic objectives that are unachievable, redundant, or missing).
-4. **Create, update, or remove** markdown files as needed.
-5. **Regenerate** the `strategic-objectives/README.md` narrative summary.
+4. **Use `write_file`** to create or update markdown files as needed. **Use `delete_file`** to remove items that are no longer relevant.
+5. **Use `write_file`** to regenerate the `strategic-objectives/README.md` narrative summary.
 6. **Produce feedback memos** for the layers below if you discover:
    - Values that are too vague to derive strategic objectives from
    - Situations that are missing from the SA layer but are relevant

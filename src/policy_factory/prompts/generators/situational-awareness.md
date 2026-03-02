@@ -31,7 +31,7 @@ The SA layer provides the factual foundation that higher layers build upon. It m
 
 ## Instructions
 
-1. **Read** all existing markdown files in the `situational-awareness/` directory.
+1. **Use `list_files`** to see all files in the `situational-awareness/` directory, then **use `read_file`** to examine each one.
 2. **Assess** whether the current SA items accurately reflect the world as it is right now. Consider:
    - Finland's geopolitical position (NATO membership, EU, Nordic cooperation, Russia relations)
    - EU regulatory landscape (AI Act, Digital Markets Act, Data Act, NIS2)
@@ -44,8 +44,8 @@ The SA layer provides the factual foundation that higher layers build upon. It m
    - Climate technology and green transition
    - Semiconductor supply chains and hardware dependencies
 3. **Incorporate** feedback memos from higher layers that identified factual gaps or outdated assessments.
-4. **Create, update, or remove** markdown files as needed. Each file should cover a distinct aspect of the situation.
-5. **Regenerate** the `situational-awareness/README.md` narrative summary.
+4. **Use `write_file`** to create or update markdown files as needed. Each file should cover a distinct aspect of the situation. **Use `delete_file`** to remove items that are no longer relevant.
+5. **Use `write_file`** to regenerate the `situational-awareness/README.md` narrative summary.
 
 ## Output Format
 

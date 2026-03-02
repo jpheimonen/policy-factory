@@ -14,7 +14,7 @@ The following values have been established as Finland's foundational interests:
 
 ## Instructions
 
-Use web search to research and create a comprehensive initial Situational Awareness layer. Create markdown files in the `situational-awareness/` directory covering the following topics:
+**Use `web_search`** to research current information about Finland's technology policy landscape. Then **use `write_file`** to create a comprehensive initial Situational Awareness layer in the `situational-awareness/` directory covering the following topics:
 
 1. **Finland's geopolitical position** — NATO membership implications, EU integration, Russia relations, Nordic cooperation, Arctic strategy
 2. **EU regulatory landscape** — AI Act, Digital Markets Act, Data Act, NIS2, Digital Services Act, and their implications for Finland
@@ -29,7 +29,7 @@ Use web search to research and create a comprehensive initial Situational Awaren
 
 ## Output Format
 
-Create one markdown file per topic in `situational-awareness/`:
+**Use `write_file`** to create one markdown file per topic in `situational-awareness/`:
 
 ```markdown
 ---
@@ -45,11 +45,11 @@ references:
 Factual, well-sourced assessment of this topic as it relates to Finland's technology policy.
 ```
 
-Also create a `situational-awareness/README.md` narrative summary that ties all topics together into a coherent picture of Finland's current technology policy landscape.
+Also **use `write_file`** to create a `situational-awareness/README.md` narrative summary that ties all topics together into a coherent picture of Finland's current technology policy landscape.
 
 ## Important
 
-- Use web search to get current, accurate information. Do not rely solely on training data.
+- **Use `web_search`** to get current, accurate information. Do not rely solely on training data.
 - Be factual, not aspirational. Report what IS, not what should be.
 - Include uncomfortable truths. If Finland is behind in an area, say so.
 - Reference the values layer to show which national interests each situation affects.

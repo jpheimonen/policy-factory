@@ -29,7 +29,7 @@ The following feedback has been received from higher layers (strategic, tactical
 
 ## Instructions
 
-1. **Read** all existing markdown files in the `values/` directory to understand the current state.
+1. **Use `list_files`** to see all files in the `values/` directory, then **use `read_file`** to examine each one and understand the current state.
 2. **Evaluate** whether the current values comprehensively capture Finland's national interests in the context of technology policy. Consider:
    - National security and sovereignty
    - Economic prosperity and competitiveness
@@ -42,8 +42,8 @@ The following feedback has been received from higher layers (strategic, tactical
    - Environmental sustainability
    - Human rights and individual freedoms
 3. **Incorporate** any pending feedback memos from higher layers. These represent tensions discovered during policy generation — values that are unclear, conflicting, or missing.
-4. **Create, update, or remove** markdown files in the `values/` directory as needed.
-5. **Regenerate** the `values/README.md` narrative summary to reflect the current state of the layer.
+4. **Use `write_file`** to create or update markdown files in the `values/` directory as needed. **Use `delete_file`** to remove items that are no longer relevant.
+5. **Use `write_file`** to regenerate the `values/README.md` narrative summary to reflect the current state of the layer.
 
 ## Output Format
 

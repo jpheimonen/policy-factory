@@ -31,7 +31,7 @@ Policies are the concrete output of the analysis engine. They must be specific e
 
 ## Instructions
 
-1. **Read** all existing markdown files in the `policies/` directory.
+1. **Use `list_files`** to see all files in the `policies/` directory, then **use `read_file`** to examine each one.
 2. **Derive** specific policy recommendations that implement the tactical objectives. Each policy should:
    - Reference the tactical objective(s) it implements
    - Be specific and actionable (who does what, by when)
@@ -39,8 +39,8 @@ Policies are the concrete output of the analysis engine. They must be specific e
    - Assess political feasibility across the party spectrum
    - Estimate costs and funding sources
    - Consider international alignment (EU, Nordic, bilateral)
-3. **Create, update, or remove** markdown files as needed.
-4. **Regenerate** the `policies/README.md` narrative summary.
+3. **Use `write_file`** to create or update markdown files as needed. **Use `delete_file`** to remove items that are no longer relevant.
+4. **Use `write_file`** to regenerate the `policies/README.md` narrative summary.
 5. **Produce feedback memos** for layers below if you discover:
    - Tactical objectives that cannot be translated into viable policies
    - Missing tactical objectives needed for comprehensive policy coverage
