@@ -88,8 +88,9 @@ RUN mkdir -p /app/data /app/.db && chown -R policyuser:policyuser /app
 # Environment Variables
 # ---------------------------------------------------------------------------
 
-# Required: Anthropic API key for claude-agent-sdk agent execution
-# ENV ANTHROPIC_API_KEY=  (must be provided at runtime)
+# AI agents use claude-agent-sdk which wraps the Claude Code CLI.
+# No API key needed — the CLI uses the user's Claude subscription.
+# Authenticate by running: claude auth login (before building or inside the container)
 
 # SQLite database path (persisted via volume mount)
 ENV POLICY_FACTORY_DB_PATH=/app/.db/store.db

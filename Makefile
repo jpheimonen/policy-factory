@@ -54,7 +54,6 @@ docker-run:
 		-v $(DOCKER_DB_DIR):/app/.db \
 		-e POLICY_FACTORY_DB_PATH=/app/.db/store.db \
 		-e POLICY_FACTORY_DATA_DIR=/app/data \
-		-e ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY:-} \
 		$(if $(wildcard .env),--env-file .env,) \
 		$(DOCKER_IMAGE)
 	@echo ""
