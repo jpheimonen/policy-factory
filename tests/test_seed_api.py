@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 import policy_factory.auth as auth_mod
+from policy_factory.agent.session import AgentResult
 from policy_factory.auth import create_access_token, hash_password
 from policy_factory.data.layers import LAYER_SLUGS
 from policy_factory.events import EventEmitter
@@ -185,29 +187,62 @@ class TestTriggerSeed:
         self,
         client: TestClient,
         auth_headers: dict[str, str],
+        data_dir: Path,
     ) -> None:
         """Endpoint accepts POST without request body (backward compatible)."""
-        # We just verify the endpoint accepts the request without body
-        # The actual agent execution would fail in tests without mocking
-        # but the endpoint itself should handle the request
-        resp = client.post("/api/seed/", headers=auth_headers)
+        mock_session = MagicMock()
+        mock_result = AgentResult(
+            is_error=False,
+            result_text="Created SA files.",
+            full_output="Created SA files.",
+            total_cost_usd=0.01,
+            num_turns=1,
+        )
+        mock_session.run = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "policy_factory.agent.session.AgentSession",
+            return_value=mock_session,
+        ), patch(
+            "policy_factory.server.routers.seed.trigger_cascade",
+            new_callable=AsyncMock,
+            return_value=("cascade-123", True),
+        ):
+            resp = client.post("/api/seed/", headers=auth_headers)
         # 200 success or any non-422/401 error means the body parsing succeeded
-        # 500 is expected since ANTHROPIC_API_KEY is not set in tests
         assert resp.status_code not in (422, 401), "Endpoint should accept empty body"
 
     def test_accepts_request_with_context(
         self,
         client: TestClient,
         auth_headers: dict[str, str],
+        data_dir: Path,
     ) -> None:
         """Endpoint accepts POST with optional context field."""
-        resp = client.post(
-            "/api/seed/",
-            headers=auth_headers,
-            json={"context": "Finland's current situation involves..."},
+        mock_session = MagicMock()
+        mock_result = AgentResult(
+            is_error=False,
+            result_text="Created SA files.",
+            full_output="Created SA files.",
+            total_cost_usd=0.01,
+            num_turns=1,
         )
-        # Same as above - just verify the request body is accepted
-        # 500 is expected since ANTHROPIC_API_KEY is not set in tests
+        mock_session.run = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "policy_factory.agent.session.AgentSession",
+            return_value=mock_session,
+        ), patch(
+            "policy_factory.server.routers.seed.trigger_cascade",
+            new_callable=AsyncMock,
+            return_value=("cascade-123", True),
+        ):
+            resp = client.post(
+                "/api/seed/",
+                headers=auth_headers,
+                json={"context": "Finland's current situation involves..."},
+            )
+        # Just verify the request body is accepted
         assert resp.status_code not in (422, 401), "Endpoint should accept context field"
 
     def test_clears_existing_items_before_seeding(
@@ -227,8 +262,24 @@ class TestTriggerSeed:
             "---\ntitle: Geopolitics\nstatus: current\n---\nContent"
         )
 
+        mock_session = MagicMock()
+        mock_result = AgentResult(
+            is_error=False,
+            result_text="Created SA files.",
+            full_output="Created SA files.",
+            total_cost_usd=0.01,
+            num_turns=1,
+        )
+        mock_session.run = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "policy_factory.agent.session.AgentSession",
+            return_value=mock_session,
+        ), patch(
+            "policy_factory.server.routers.seed.trigger_cascade",
+            new_callable=AsyncMock,
+            return_value=("cascade-123", True),
+        ):
+            resp = client.post("/api/seed/", headers=auth_headers)
         # The endpoint should NOT return 409 anymore
-        # Instead it should proceed (even though agent execution would fail
-        # without proper mocking - 500 is expected for missing API key)
-        resp = client.post("/api/seed/", headers=auth_headers)
         assert resp.status_code != 409, "Endpoint should allow re-seeding"

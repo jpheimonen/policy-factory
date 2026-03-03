@@ -25,33 +25,27 @@ class MockAgentResult:
     total_cost_usd: float | None = 0.01
     num_turns: int | None = 1
     full_output: str = ""
+    session_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
-# Mock helper for agent sessions with mocked Anthropic client
+# Mock helper for agent sessions
 # ---------------------------------------------------------------------------
 
 
 def create_mock_agent_patches(mock_run_fn):
-    """Create patches for AgentSession and get_anthropic_client.
-
-    This is needed because AgentSession requires an Anthropic client,
-    and we want to mock the entire agent execution flow.
+    """Create a patch for AgentSession that mocks the entire agent execution flow.
 
     Args:
         mock_run_fn: Async function to use for AgentSession.run()
 
     Returns:
-        Tuple of patch contexts to use with nested with statements
+        A single patch context manager for AgentSession.
     """
     mock_session = MagicMock()
     mock_session.run = AsyncMock(side_effect=mock_run_fn)
-    mock_client = MagicMock()
 
-    return (
-        patch("policy_factory.agent.session.AgentSession", return_value=mock_session),
-        patch("policy_factory.server.deps.get_anthropic_client", return_value=mock_client),
-    )
+    return patch("policy_factory.agent.session.AgentSession", return_value=mock_session)
 
 
 # ---------------------------------------------------------------------------
@@ -122,8 +116,8 @@ async def test_tier1_nothing_noteworthy_stops(
             full_output="STATUS: NOTHING_NOTEWORTHY\nNo significant developments found.",
         )
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2:
+    p = create_mock_agent_patches(mock_run)
+    with p:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -176,8 +170,8 @@ async def test_tier1_flags_items_escalates_to_tier2(
             full_output="STATUS: NO_UPDATE_NEEDED\nAnalysis complete.",
         )
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2:
+    p = create_mock_agent_patches(mock_run)
+    with p:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -228,8 +222,8 @@ async def test_full_escalation_through_all_tiers(
     mock_cascade = AsyncMock(return_value=("cascade-123", True))
     mock_idea_gen = AsyncMock(return_value=["idea-1"])
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2, patch("policy_factory.data.git.commit_changes"):
+    p = create_mock_agent_patches(mock_run)
+    with p, patch("policy_factory.data.git.commit_changes"):
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -278,8 +272,8 @@ async def test_tier1_failure_stops_heartbeat(
     async def mock_run(prompt):
         raise RuntimeError("API overloaded")
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2:
+    p = create_mock_agent_patches(mock_run)
+    with p:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -324,8 +318,8 @@ async def test_tier3_failure_prevents_tier4(
 
     mock_cascade = AsyncMock()
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2:
+    p = create_mock_agent_patches(mock_run)
+    with p:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -370,8 +364,8 @@ async def test_tier4_cascade_queue_still_completes(
     # Cascade returns queue entry (is_cascade=False)
     mock_cascade = AsyncMock(return_value=("queue-entry-id", False))
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2, patch("policy_factory.data.git.commit_changes"):
+    p = create_mock_agent_patches(mock_run)
+    with p, patch("policy_factory.data.git.commit_changes"):
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         run_id = await run_heartbeat(
@@ -398,8 +392,8 @@ async def test_heartbeat_records_agent_runs(
             full_output="STATUS: NOTHING_NOTEWORTHY\nNo news.",
         )
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2:
+    p = create_mock_agent_patches(mock_run)
+    with p:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         await run_heartbeat(
@@ -434,8 +428,8 @@ async def test_tier3_auto_commits(
         call_count += 1
         return result
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2, patch("policy_factory.data.git.commit_changes") as mock_commit:
+    p = create_mock_agent_patches(mock_run)
+    with p, patch("policy_factory.data.git.commit_changes") as mock_commit:
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         await run_heartbeat(
@@ -479,8 +473,8 @@ async def test_tier3_receives_feedback_memos(
         call_count += 1
         return result
 
-    p1, p2 = create_mock_agent_patches(mock_run)
-    with p1, p2, patch("policy_factory.data.git.commit_changes"):
+    p = create_mock_agent_patches(mock_run)
+    with p, patch("policy_factory.data.git.commit_changes"):
         from policy_factory.heartbeat.orchestrator import run_heartbeat
 
         await run_heartbeat(

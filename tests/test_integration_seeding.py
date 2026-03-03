@@ -182,35 +182,23 @@ def _make_mock_failing_agent_result() -> AgentResult:
 
 @contextmanager
 def mock_agent_session(mock_result: AgentResult):
-    """Context manager that mocks AgentSession and get_anthropic_client.
+    """Context manager that mocks AgentSession for seeding tests.
 
     Args:
         mock_result: The AgentResult to return from session.run()
 
     Note:
-        - AgentSession is lazily imported inside the endpoint function with `from`,
-          so we must patch at the source module (policy_factory.agent.session.AgentSession)
-        - get_anthropic_client is imported at module level with `from`, so we must
-          patch where it's used (policy_factory.server.routers.seed.get_anthropic_client)
+        AgentSession is lazily imported inside the endpoint function with `from`,
+        so we must patch at the source module (policy_factory.agent.session.AgentSession).
     """
-    # Create a mock session
     mock_session = MagicMock()
     mock_session.run = AsyncMock(return_value=mock_result)
 
-    # Create a mock Anthropic client
-    mock_client = MagicMock()
-
-    # Patch AgentSession at its source (lazy import inside function resolves there)
     with patch(
         "policy_factory.agent.session.AgentSession",
         return_value=mock_session,
     ):
-        # Patch get_anthropic_client where it's imported and used
-        with patch(
-            "policy_factory.server.routers.seed.get_anthropic_client",
-            return_value=mock_client,
-        ):
-            yield mock_session
+        yield mock_session
 
 
 @contextmanager
@@ -221,27 +209,17 @@ def mock_agent_session_with_side_effect(side_effect_fn):
         side_effect_fn: Function called with prompt that returns AgentResult
 
     Note:
-        - AgentSession is lazily imported inside the endpoint function with `from`,
-          so we must patch at the source module (policy_factory.agent.session.AgentSession)
-        - get_anthropic_client is imported at module level with `from`, so we must
-          patch where it's used (policy_factory.server.routers.seed.get_anthropic_client)
+        AgentSession is lazily imported inside the endpoint function with `from`,
+        so we must patch at the source module (policy_factory.agent.session.AgentSession).
     """
-    # Create a mock session
     mock_session = MagicMock()
     mock_session.run = AsyncMock(side_effect=side_effect_fn)
-
-    # Create a mock Anthropic client
-    mock_client = MagicMock()
 
     with patch(
         "policy_factory.agent.session.AgentSession",
         return_value=mock_session,
     ):
-        with patch(
-            "policy_factory.server.routers.seed.get_anthropic_client",
-            return_value=mock_client,
-        ):
-            yield mock_session
+        yield mock_session
 
 
 # ---------------------------------------------------------------------------

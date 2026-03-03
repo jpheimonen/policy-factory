@@ -59,7 +59,6 @@ Examples:
   policy-factory server --host 0.0.0.0      Bind to all interfaces
 
 Environment:
-  ANTHROPIC_API_KEY              Required for Claude Code SDK (agent operations)
   POLICY_FACTORY_HOST            Host to bind to (overrides --host default)
   POLICY_FACTORY_PORT            Port to bind to (overrides --port default)
   POLICY_FACTORY_DB_PATH         Path to SQLite database file

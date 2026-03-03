@@ -1,7 +1,7 @@
 """Tests for the critic runner and synthesis runner.
 
 Uses mock agent sessions to test the orchestration logic without
-actually calling the Anthropic SDK.
+actually calling the Claude Code SDK.
 """
 
 from __future__ import annotations
@@ -68,33 +68,27 @@ class MockAgentResult:
     total_cost_usd: float | None = 0.01
     num_turns: int | None = 1
     full_output: str = ""
+    session_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
-# Mock helper for agent sessions with mocked Anthropic client
+# Mock helper for agent sessions
 # ---------------------------------------------------------------------------
 
 
 def create_mock_agent_patches(mock_run_fn):
-    """Create patches for AgentSession and get_anthropic_client.
-
-    This is needed because AgentSession requires an Anthropic client,
-    and we want to mock the entire agent execution flow.
+    """Create a patch for AgentSession that mocks the entire agent execution flow.
 
     Args:
         mock_run_fn: Async function to use for AgentSession.run()
 
     Returns:
-        Tuple of patch contexts to use with ExitStack or nested with statements
+        A single patch context manager for AgentSession.
     """
     mock_session = MagicMock()
     mock_session.run = AsyncMock(side_effect=mock_run_fn)
-    mock_client = MagicMock()
 
-    return (
-        patch("policy_factory.agent.session.AgentSession", return_value=mock_session),
-        patch("policy_factory.server.deps.get_anthropic_client", return_value=mock_client),
-    )
+    return patch("policy_factory.agent.session.AgentSession", return_value=mock_session)
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +244,8 @@ class TestCriticRunner:
             call_count += 1
             return MockAgentResult(full_output=f"Assessment {call_count}")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -276,8 +270,8 @@ class TestCriticRunner:
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Assessment")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -302,8 +296,8 @@ class TestCriticRunner:
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Assessment")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -330,8 +324,8 @@ class TestCriticRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Assessment")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -358,8 +352,8 @@ class TestCriticRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Assessment")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -379,8 +373,8 @@ class TestCriticRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Detailed assessment text")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -406,8 +400,8 @@ class TestCriticRunner:
                 raise RuntimeError("API error")
             return MockAgentResult(full_output="Assessment")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -428,8 +422,8 @@ class TestCriticRunner:
         async def mock_run(prompt):
             raise RuntimeError("All broken")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -456,8 +450,8 @@ class TestCriticRunner:
                 raise RuntimeError("Failed")
             return MockAgentResult(full_output="Last one works")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -484,8 +478,8 @@ class TestCriticRunner:
             await asyncio.sleep(0.05)  # Simulate work
             return MockAgentResult(full_output="Assessment")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             start = time.monotonic()
             await run_critics(
                 layer_slug="values",
@@ -512,8 +506,8 @@ class TestCriticRunner:
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Assessment")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -534,8 +528,8 @@ class TestCriticRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Assessment")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_critics(
                 layer_slug="values",
                 cascade_id="cascade-test",
@@ -601,8 +595,8 @@ class TestSynthesisRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Synthesis output")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -628,8 +622,8 @@ class TestSynthesisRunner:
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Synthesis")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -657,8 +651,8 @@ class TestSynthesisRunner:
             prompts_received.append(prompt)
             return MockAgentResult(full_output="Synthesis")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -700,8 +694,8 @@ class TestSynthesisRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Partial synthesis")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -729,8 +723,8 @@ class TestSynthesisRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Synthesis")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -756,8 +750,8 @@ class TestSynthesisRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Synthesis")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -780,8 +774,8 @@ class TestSynthesisRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Stored synthesis")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -805,8 +799,8 @@ class TestSynthesisRunner:
         async def mock_run(prompt):
             raise RuntimeError("Synthesis crashed")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_synthesis(
                 layer_slug="values",
                 critic_results=critic_results,
@@ -839,8 +833,8 @@ class TestSynthesisRunner:
         async def mock_run(prompt):
             return MockAgentResult(full_output="Synthesis from DB results")
 
-        p1, p2 = create_mock_agent_patches(mock_run)
-        with p1, p2:
+        p = create_mock_agent_patches(mock_run)
+        with p:
             result = await run_synthesis(
                 layer_slug="values",
                 critic_results=None,
