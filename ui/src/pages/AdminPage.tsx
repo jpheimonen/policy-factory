@@ -64,7 +64,10 @@ interface HeartbeatStatus {
 }
 
 interface SeedStatus {
-  seeded: boolean;
+  values_seeded: boolean;
+  values_count: number;
+  sa_seeded: boolean;
+  sa_count: number;
 }
 
 // ── Helper: format date ────────────────────────────────────────────────
@@ -145,6 +148,9 @@ export function AdminPage() {
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [triggerHeartbeatLoading, setTriggerHeartbeatLoading] = useState(false);
+  const [seedValuesLoading, setSeedValuesLoading] = useState(false);
+  const [seedSaLoading, setSeedSaLoading] = useState(false);
+  const [fullCascadeLoading, setFullCascadeLoading] = useState(false);
 
   // ── Data fetching ───────────────────────────────────────────────────
 
@@ -270,6 +276,47 @@ export function AdminPage() {
       }
     } finally {
       setTriggerHeartbeatLoading(false);
+    }
+  };
+
+  // ── Seed Values handler ──────────────────────────────────────────────
+
+  const handleSeedValues = async () => {
+    setSeedValuesLoading(true);
+    try {
+      await apiRequest("/api/seed/values", { method: "POST" });
+      setTimeout(fetchStatus, 1000);
+    } catch {
+      // Error handling — button returns to idle
+    } finally {
+      setSeedValuesLoading(false);
+    }
+  };
+
+  // ── Seed SA handler ─────────────────────────────────────────────────
+
+  const handleSeedSa = async () => {
+    setSeedSaLoading(true);
+    try {
+      await apiRequest("/api/seed/", { method: "POST" });
+      setTimeout(fetchStatus, 1000);
+    } catch {
+      // Error handling — button returns to idle
+    } finally {
+      setSeedSaLoading(false);
+    }
+  };
+
+  // ── Full Cascade handler ────────────────────────────────────────────
+
+  const handleFullCascade = async () => {
+    setFullCascadeLoading(true);
+    try {
+      await apiRequest("/api/cascade/full", { method: "POST" });
+    } catch {
+      // Error handling — button returns to idle
+    } finally {
+      setFullCascadeLoading(false);
     }
   };
 
@@ -493,16 +540,57 @@ export function AdminPage() {
                 {seedStatus ? (
                   <>
                     <StatusItem>
-                      <StatusDot $active={seedStatus.seeded} />
-                      {seedStatus.seeded
-                        ? t("admin.seedComplete")
-                        : t("admin.seedNotComplete")}
+                      <StatusDot $active={seedStatus.values_seeded} />
+                      {seedStatus.values_seeded
+                        ? t("admin.valuesSeeded", { count: String(seedStatus.values_count) })
+                        : t("admin.valuesNotSeeded")}
                     </StatusItem>
-                    {!seedStatus.seeded && (
+                    <StatusItem>
+                      <StatusDot $active={seedStatus.sa_seeded} />
+                      {seedStatus.sa_seeded
+                        ? t("admin.saSeeded", { count: String(seedStatus.sa_count) })
+                        : t("admin.saNotSeeded")}
+                    </StatusItem>
+                    {(!seedStatus.values_seeded || !seedStatus.sa_seeded) && (
                       <StatusItem>
                         {t("admin.seedGuidance")}
                       </StatusItem>
                     )}
+                    <StatusActions>
+                      <Button
+                        $variant="secondary"
+                        $size="sm"
+                        onClick={handleSeedValues}
+                        disabled={seedValuesLoading || seedSaLoading}
+                        $loading={seedValuesLoading}
+                      >
+                        {seedValuesLoading
+                          ? t("admin.seedValuesRunning")
+                          : t("admin.seedValuesButton")}
+                      </Button>
+                      <Button
+                        $variant="secondary"
+                        $size="sm"
+                        onClick={handleSeedSa}
+                        disabled={seedSaLoading || seedValuesLoading}
+                        $loading={seedSaLoading}
+                      >
+                        {seedSaLoading
+                          ? t("admin.seedSaRunning")
+                          : t("admin.seedSaButton")}
+                      </Button>
+                      <Button
+                        $variant="primary"
+                        $size="sm"
+                        onClick={handleFullCascade}
+                        disabled={fullCascadeLoading}
+                        $loading={fullCascadeLoading}
+                      >
+                        {fullCascadeLoading
+                          ? t("admin.fullCascadeRunning")
+                          : t("admin.fullCascadeButton")}
+                      </Button>
+                    </StatusActions>
                   </>
                 ) : (
                   <StatusItem>{t("admin.seedNotComplete")}</StatusItem>

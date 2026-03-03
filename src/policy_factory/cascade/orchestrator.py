@@ -140,6 +140,16 @@ GenerationRunnerFn = Callable[
     Awaitable[Any],
 ]
 
+# Map layer slug to prompt template file name.
+# Prompt files don't always match the layer slug directly.
+_SLUG_TO_PROMPT: dict[str, str] = {
+    "values": "values",
+    "situational-awareness": "situational-awareness",
+    "strategic-objectives": "strategic",
+    "tactical-objectives": "tactical",
+    "policies": "policies",
+}
+
 
 # ---------------------------------------------------------------------------
 # Context gathering for generation prompts
@@ -229,11 +239,12 @@ async def _default_generation_runner(
     # Resolve model for the generator role
     model = resolve_model("generator")
 
+    prompt_name = _SLUG_TO_PROMPT.get(layer_slug, layer_slug)
+
     # Build the generation prompt
-    layer_name = layer_slug.replace("-", "_")
     prompt = build_agent_prompt(
         "generators",
-        layer_name,
+        prompt_name,
         context=context,
         layer_slug=layer_slug,
     )

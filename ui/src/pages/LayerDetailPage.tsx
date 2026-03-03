@@ -100,13 +100,12 @@ export function LayerDetailPage() {
     setRefreshing(true);
 
     try {
-      await apiRequest("/api/cascade/trigger", {
+      await apiRequest("/api/cascade/refresh", {
         method: "POST",
-        body: { layer: slug, type: "layer_refresh" },
+        body: { layer_slug: slug },
       });
     } catch {
-      // Cascade endpoint is not yet available (step 017) — gracefully ignored.
-      // The button simply returns to its idle state.
+      // If cascade fails to start, the button simply returns to idle state.
     } finally {
       setRefreshing(false);
     }
