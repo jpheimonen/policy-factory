@@ -107,8 +107,6 @@ def make_result(
 class SandboxViolationError(Exception):
     """Raised when a path resolves outside the sandbox."""
 
-    pass
-
 
 def validate_path(data_dir: Path, relative_path: str) -> Path:
     """Validate and resolve a path within the data directory sandbox.
@@ -306,6 +304,39 @@ def delete_file(data_dir: Path, path: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _invoke_file_tool(
+    impl_fn: Any,
+    args: dict[str, Any],
+    arg_keys: tuple[str, ...] = ("path",),
+) -> dict[str, Any]:
+    """Invoke a file tool implementation with context and result conversion.
+
+    Shared logic for all MCP tool handlers: resolves the tool context,
+    validates ``data_dir``, calls the implementation function, and
+    converts the implementation result dict to MCP result format.
+
+    Args:
+        impl_fn: The file tool implementation function (e.g. ``list_files``).
+        args: The MCP tool arguments dict from the SDK.
+        arg_keys: Keys to extract from ``args`` (after ``data_dir``).
+
+    Returns:
+        An MCP-formatted result dict.
+    """
+    ctx = get_tool_context()
+    data_dir = ctx["data_dir"]
+    if data_dir is None:
+        return make_result(False, error="Tool context not initialised (no data_dir)")
+    try:
+        call_args = [data_dir] + [args.get(k, "") for k in arg_keys]
+        result = impl_fn(*call_args)
+        if "error" in result:
+            return make_result(False, error=result["error"])
+        return make_result(True, data=result["data"])
+    except Exception as e:
+        return make_result(False, error=str(e))
+
+
 @tool(
     "list_files",
     "List markdown filenames in a directory within the data folder. "
@@ -314,17 +345,7 @@ def delete_file(data_dir: Path, path: str) -> dict[str, Any]:
 )
 async def list_files_tool(args: dict[str, Any]) -> dict[str, Any]:
     """MCP handler for list_files."""
-    ctx = get_tool_context()
-    data_dir = ctx["data_dir"]
-    if data_dir is None:
-        return make_result(False, error="Tool context not initialised (no data_dir)")
-    try:
-        result = list_files(data_dir, args.get("path", ""))
-        if "error" in result:
-            return make_result(False, error=result["error"])
-        return make_result(True, data=result["data"])
-    except Exception as e:
-        return make_result(False, error=str(e))
+    return _invoke_file_tool(list_files, args)
 
 
 @tool(
@@ -335,17 +356,7 @@ async def list_files_tool(args: dict[str, Any]) -> dict[str, Any]:
 )
 async def read_file_tool(args: dict[str, Any]) -> dict[str, Any]:
     """MCP handler for read_file."""
-    ctx = get_tool_context()
-    data_dir = ctx["data_dir"]
-    if data_dir is None:
-        return make_result(False, error="Tool context not initialised (no data_dir)")
-    try:
-        result = read_file(data_dir, args.get("path", ""))
-        if "error" in result:
-            return make_result(False, error=result["error"])
-        return make_result(True, data=result["data"])
-    except Exception as e:
-        return make_result(False, error=str(e))
+    return _invoke_file_tool(read_file, args)
 
 
 @tool(
@@ -356,17 +367,7 @@ async def read_file_tool(args: dict[str, Any]) -> dict[str, Any]:
 )
 async def write_file_tool(args: dict[str, Any]) -> dict[str, Any]:
     """MCP handler for write_file."""
-    ctx = get_tool_context()
-    data_dir = ctx["data_dir"]
-    if data_dir is None:
-        return make_result(False, error="Tool context not initialised (no data_dir)")
-    try:
-        result = write_file(data_dir, args.get("path", ""), args.get("content", ""))
-        if "error" in result:
-            return make_result(False, error=result["error"])
-        return make_result(True, data=result["data"])
-    except Exception as e:
-        return make_result(False, error=str(e))
+    return _invoke_file_tool(write_file, args, arg_keys=("path", "content"))
 
 
 @tool(
@@ -377,17 +378,7 @@ async def write_file_tool(args: dict[str, Any]) -> dict[str, Any]:
 )
 async def delete_file_tool(args: dict[str, Any]) -> dict[str, Any]:
     """MCP handler for delete_file."""
-    ctx = get_tool_context()
-    data_dir = ctx["data_dir"]
-    if data_dir is None:
-        return make_result(False, error="Tool context not initialised (no data_dir)")
-    try:
-        result = delete_file(data_dir, args.get("path", ""))
-        if "error" in result:
-            return make_result(False, error=result["error"])
-        return make_result(True, data=result["data"])
-    except Exception as e:
-        return make_result(False, error=str(e))
+    return _invoke_file_tool(delete_file, args)
 
 
 # ---------------------------------------------------------------------------

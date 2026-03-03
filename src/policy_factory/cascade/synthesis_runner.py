@@ -50,6 +50,15 @@ class SynthesisRunnerResult:
 # ---------------------------------------------------------------------------
 
 
+# Maps section header regex patterns to output field names.
+_SYNTHESIS_SECTION_PATTERNS: list[tuple[str, str]] = [
+    (r"Areas?\s+of\s+Consensus", "consensus_points"),
+    (r"Key\s+Tensions?", "tension_points"),
+    (r"Strongest\s+Criticisms?", "strongest_criticisms"),
+    (r"Recommended\s+Refinements?", "recommendations"),
+]
+
+
 def parse_synthesis_output(text: str) -> dict[str, Any] | None:
     """Attempt to parse structured synthesis from agent output.
 
@@ -63,41 +72,15 @@ def parse_synthesis_output(text: str) -> dict[str, Any] | None:
 
     structured: dict[str, Any] = {}
 
-    # Extract "Areas of Consensus" section
-    consensus_match = re.search(
-        r'###\s+Areas?\s+of\s+Consensus\s*\n(.*?)(?=###|\Z)',
-        text,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if consensus_match:
-        structured["consensus_points"] = consensus_match.group(1).strip()
-
-    # Extract "Key Tensions" section
-    tensions_match = re.search(
-        r'###\s+Key\s+Tensions?\s*\n(.*?)(?=###|\Z)',
-        text,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if tensions_match:
-        structured["tension_points"] = tensions_match.group(1).strip()
-
-    # Extract "Strongest Criticisms" section
-    criticisms_match = re.search(
-        r'###\s+Strongest\s+Criticisms?\s*\n(.*?)(?=###|\Z)',
-        text,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if criticisms_match:
-        structured["strongest_criticisms"] = criticisms_match.group(1).strip()
-
-    # Extract "Recommended Refinements" section
-    recommendations_match = re.search(
-        r'###\s+Recommended\s+Refinements?\s*\n(.*?)(?=###|\Z)',
-        text,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if recommendations_match:
-        structured["recommendations"] = recommendations_match.group(1).strip()
+    # Extract named sections
+    for header_pattern, field_name in _SYNTHESIS_SECTION_PATTERNS:
+        match = re.search(
+            rf'###\s+{header_pattern}\s*\n(.*?)(?=###|\Z)',
+            text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if match:
+            structured[field_name] = match.group(1).strip()
 
     # Extract overall score
     score_match = re.search(
@@ -162,6 +145,86 @@ def _assemble_critic_outputs(
 # ---------------------------------------------------------------------------
 
 
+def _reconstruct_critic_results_from_store(
+    store: PolicyStore,
+    cascade_id: str,
+    layer_slug: str,
+) -> CriticRunnerResult | None:
+    """Reconstruct a ``CriticRunnerResult`` from persisted critic records.
+
+    Used when the orchestrator passes ``None`` for critic_results and
+    we need to fetch them from the database.
+
+    Returns:
+        A ``CriticRunnerResult``, or ``None`` if no stored results exist.
+    """
+    from .critic_runner import CriticRunnerResult as CriticRunnerRes
+    from .critic_runner import SingleCriticResult
+
+    stored = store.get_critic_results(cascade_id, layer_slug)
+    if not stored:
+        return None
+
+    results_list = [
+        SingleCriticResult(
+            archetype=cr.archetype,
+            success=cr.is_success,
+            assessment_text=cr.assessment_text,
+            structured_assessment=cr.structured_assessment,
+            agent_run_id=cr.agent_run_id,
+        )
+        for cr in stored
+    ]
+    return CriticRunnerRes(
+        results=results_list,
+        successful_count=sum(1 for r in results_list if r.success),
+        failed_count=sum(1 for r in results_list if not r.success),
+    )
+
+
+async def _finalize_synthesis_result(
+    *,
+    cascade_id: str,
+    layer_slug: str,
+    idea_id: str | None,
+    agent_run_id: str,
+    store: PolicyStore,
+    emitter: EventEmitter,
+    success: bool,
+    synthesis_text: str = "",
+    structured_synthesis: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> SynthesisRunnerResult:
+    """Store synthesis result, emit completion event, and build the return value.
+
+    Shared epilogue for the three exit paths in ``run_synthesis``
+    (success, agent error, exception).
+    """
+    store.store_synthesis_result(
+        cascade_id=cascade_id or None,
+        layer_slug=layer_slug or None,
+        idea_id=idea_id,
+        synthesis_text=synthesis_text,
+        structured_synthesis=structured_synthesis,
+        agent_run_id=agent_run_id,
+    )
+
+    await emitter.emit(
+        SynthesisCompleted(
+            cascade_id=cascade_id or "",
+            layer_slug=layer_slug,
+        )
+    )
+
+    return SynthesisRunnerResult(
+        success=success,
+        synthesis_text=synthesis_text,
+        structured_synthesis=structured_synthesis,
+        agent_run_id=agent_run_id,
+        error=error,
+    )
+
+
 async def run_synthesis(
     layer_slug: str,
     critic_results: CriticRunnerResult | Any,
@@ -199,45 +262,21 @@ async def run_synthesis(
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
 
-    from .content import gather_layer_content as _gather
+    from .content import gather_layer_content
 
-    # If critic_results is None (e.g. from orchestrator passing None),
-    # we need to fetch from the database
+    # If critic_results is None, reconstruct from the database
     if critic_results is None:
-        # Try to reconstruct from stored results
         if cascade_id:
-            stored = store.get_critic_results(cascade_id, layer_slug)
-            if not stored:
-                return SynthesisRunnerResult(
-                    success=False,
-                    error="No critic results available for synthesis",
-                )
-            # Build a minimal CriticRunnerResult from stored data
-            from .critic_runner import CriticRunnerResult as CriticRunnerRes
-            from .critic_runner import SingleCriticResult
-
-            results_list = [
-                SingleCriticResult(
-                    archetype=cr.archetype,
-                    success=cr.is_success,
-                    assessment_text=cr.assessment_text,
-                    structured_assessment=cr.structured_assessment,
-                    agent_run_id=cr.agent_run_id,
-                )
-                for cr in stored
-            ]
-            critic_results = CriticRunnerRes(
-                results=results_list,
-                successful_count=sum(1 for r in results_list if r.success),
-                failed_count=sum(1 for r in results_list if not r.success),
+            critic_results = _reconstruct_critic_results_from_store(
+                store, cascade_id, layer_slug
             )
-        else:
+        if critic_results is None:
             return SynthesisRunnerResult(
                 success=False,
                 error="No critic results available for synthesis",
             )
 
-    # Check if we have any successful critics
+    # Validate type
     if not isinstance(critic_results, CriticRunnerResult):
         return SynthesisRunnerResult(
             success=False,
@@ -264,7 +303,7 @@ async def run_synthesis(
 
     # Gather content if not provided
     if layer_content is None:
-        layer_content = _gather(data_dir, layer_slug)
+        layer_content = gather_layer_content(data_dir, layer_slug)
 
     # Resolve model for synthesis role
     model = resolve_model("synthesis")
@@ -276,6 +315,16 @@ async def run_synthesis(
         agent_label="Synthesis",
         model=model,
         target_layer=layer_slug or None,
+    )
+
+    # Shared keyword args for the finalize helper
+    finalize_kwargs: dict[str, Any] = dict(
+        cascade_id=cascade_id,
+        layer_slug=layer_slug,
+        idea_id=idea_id,
+        agent_run_id=agent_run_id,
+        store=store,
+        emitter=emitter,
     )
 
     try:
@@ -291,13 +340,8 @@ async def run_synthesis(
             **critic_vars,
         )
 
-        # Create agent config
-        config = AgentConfig(
-            model=model,
-            role="synthesis",
-        )
-
         # Create and run the session
+        config = AgentConfig(model=model, role="synthesis")
         session = AgentSession(
             config=config,
             emitter=emitter,
@@ -308,13 +352,7 @@ async def run_synthesis(
 
         result = await session.run(prompt)
 
-        # Extract synthesis text
-        synthesis_text = result.full_output or result.result_text or ""
-
-        # Attempt structured parsing
-        structured = parse_synthesis_output(synthesis_text)
-
-        # Record success
+        # Record agent completion
         store.complete_agent_run(
             agent_run_id,
             success=not result.is_error,
@@ -324,50 +362,21 @@ async def run_synthesis(
         )
 
         if result.is_error:
-            store.store_synthesis_result(
-                cascade_id=cascade_id or None,
-                layer_slug=layer_slug or None,
-                idea_id=idea_id,
-                synthesis_text="",
-                structured_synthesis=None,
-                agent_run_id=agent_run_id,
-            )
-
-            await emitter.emit(
-                SynthesisCompleted(
-                    cascade_id=cascade_id or "",
-                    layer_slug=layer_slug,
-                )
-            )
-
-            return SynthesisRunnerResult(
+            return await _finalize_synthesis_result(
+                **finalize_kwargs,
                 success=False,
                 error=result.result_text,
-                agent_run_id=agent_run_id,
             )
 
-        # Store the synthesis result
-        store.store_synthesis_result(
-            cascade_id=cascade_id or None,
-            layer_slug=layer_slug or None,
-            idea_id=idea_id,
-            synthesis_text=synthesis_text,
-            structured_synthesis=structured,
-            agent_run_id=agent_run_id,
-        )
+        # Parse synthesis from successful output
+        synthesis_text = result.full_output or result.result_text or ""
+        structured = parse_synthesis_output(synthesis_text)
 
-        await emitter.emit(
-            SynthesisCompleted(
-                cascade_id=cascade_id or "",
-                layer_slug=layer_slug,
-            )
-        )
-
-        return SynthesisRunnerResult(
+        return await _finalize_synthesis_result(
+            **finalize_kwargs,
             success=True,
             synthesis_text=synthesis_text,
             structured_synthesis=structured,
-            agent_run_id=agent_run_id,
         )
 
     except Exception as exc:
@@ -384,15 +393,8 @@ async def run_synthesis(
             error_message=error_msg,
         )
 
-        await emitter.emit(
-            SynthesisCompleted(
-                cascade_id=cascade_id or "",
-                layer_slug=layer_slug,
-            )
-        )
-
-        return SynthesisRunnerResult(
+        return await _finalize_synthesis_result(
+            **finalize_kwargs,
             success=False,
             error=error_msg,
-            agent_run_id=agent_run_id,
         )

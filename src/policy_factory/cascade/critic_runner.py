@@ -159,6 +159,53 @@ def parse_critic_assessment(text: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
+async def _finalize_critic_result(
+    *,
+    archetype: CriticArchetype,
+    layer_slug: str,
+    cascade_id: str | None,
+    idea_id: str | None,
+    agent_run_id: str,
+    store: PolicyStore,
+    emitter: EventEmitter,
+    success: bool,
+    assessment_text: str = "",
+    structured_assessment: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> SingleCriticResult:
+    """Store critic result, emit completion event, and build the return value.
+
+    Shared epilogue for the three exit paths in ``_run_single_critic``
+    (success, agent error, exception) — eliminates copy-paste result handling.
+    """
+    store.store_critic_result(
+        cascade_id=cascade_id,
+        layer_slug=layer_slug or None,
+        idea_id=idea_id,
+        archetype=archetype.slug,
+        assessment_text=assessment_text,
+        structured_assessment=structured_assessment,
+        agent_run_id=agent_run_id,
+    )
+
+    await emitter.emit(
+        CriticCompleted(
+            cascade_id=cascade_id or "",
+            layer_slug=layer_slug,
+            critic_archetype=archetype.slug,
+        )
+    )
+
+    return SingleCriticResult(
+        archetype=archetype.slug,
+        success=success,
+        assessment_text=assessment_text,
+        structured_assessment=structured_assessment,
+        error=error,
+        agent_run_id=agent_run_id,
+    )
+
+
 async def _run_single_critic(
     archetype: CriticArchetype,
     layer_slug: str,
@@ -194,6 +241,16 @@ async def _run_single_critic(
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
 
+    # Shared keyword args for the finalize helper
+    finalize_kwargs: dict[str, Any] = dict(
+        archetype=archetype,
+        layer_slug=layer_slug,
+        cascade_id=cascade_id,
+        idea_id=idea_id,
+        store=store,
+        emitter=emitter,
+    )
+
     # Emit start event
     await emitter.emit(
         CriticStarted(
@@ -225,13 +282,8 @@ async def _run_single_critic(
             cross_layer_context=cross_layer_context,
         )
 
-        # Create agent config
-        config = AgentConfig(
-            model=model,
-            role="critic",
-        )
-
         # Create and run the session
+        config = AgentConfig(model=model, role="critic")
         session = AgentSession(
             config=config,
             emitter=emitter,
@@ -242,13 +294,7 @@ async def _run_single_critic(
 
         result = await session.run(prompt)
 
-        # Extract assessment text (use full_output which has meditation filtered)
-        assessment_text = result.full_output or result.result_text or ""
-
-        # Attempt structured parsing
-        structured = parse_critic_assessment(assessment_text)
-
-        # Record success
+        # Record agent completion
         store.complete_agent_run(
             agent_run_id,
             success=not result.is_error,
@@ -258,57 +304,23 @@ async def _run_single_critic(
         )
 
         if result.is_error:
-            # Agent reported an error result
-            store.store_critic_result(
-                cascade_id=cascade_id,
-                layer_slug=layer_slug or None,
-                idea_id=idea_id,
-                archetype=archetype.slug,
-                assessment_text="",
-                structured_assessment=None,
+            return await _finalize_critic_result(
+                **finalize_kwargs,
                 agent_run_id=agent_run_id,
-            )
-
-            await emitter.emit(
-                CriticCompleted(
-                    cascade_id=cascade_id or "",
-                    layer_slug=layer_slug,
-                    critic_archetype=archetype.slug,
-                )
-            )
-
-            return SingleCriticResult(
-                archetype=archetype.slug,
                 success=False,
                 error=result.result_text,
-                agent_run_id=agent_run_id,
             )
 
-        # Store the result
-        store.store_critic_result(
-            cascade_id=cascade_id,
-            layer_slug=layer_slug or None,
-            idea_id=idea_id,
-            archetype=archetype.slug,
-            assessment_text=assessment_text,
-            structured_assessment=structured,
+        # Parse assessment from successful output
+        assessment_text = result.full_output or result.result_text or ""
+        structured = parse_critic_assessment(assessment_text)
+
+        return await _finalize_critic_result(
+            **finalize_kwargs,
             agent_run_id=agent_run_id,
-        )
-
-        await emitter.emit(
-            CriticCompleted(
-                cascade_id=cascade_id or "",
-                layer_slug=layer_slug,
-                critic_archetype=archetype.slug,
-            )
-        )
-
-        return SingleCriticResult(
-            archetype=archetype.slug,
             success=True,
             assessment_text=assessment_text,
             structured_assessment=structured,
-            agent_run_id=agent_run_id,
         )
 
     except Exception as exc:
@@ -320,37 +332,17 @@ async def _run_single_critic(
             error_msg,
         )
 
-        # Record failure
         store.complete_agent_run(
             agent_run_id,
             success=False,
             error_message=error_msg,
         )
 
-        # Store a failed result
-        store.store_critic_result(
-            cascade_id=cascade_id,
-            layer_slug=layer_slug or None,
-            idea_id=idea_id,
-            archetype=archetype.slug,
-            assessment_text="",
-            structured_assessment=None,
+        return await _finalize_critic_result(
+            **finalize_kwargs,
             agent_run_id=agent_run_id,
-        )
-
-        await emitter.emit(
-            CriticCompleted(
-                cascade_id=cascade_id or "",
-                layer_slug=layer_slug,
-                critic_archetype=archetype.slug,
-            )
-        )
-
-        return SingleCriticResult(
-            archetype=archetype.slug,
             success=False,
             error=error_msg,
-            agent_run_id=agent_run_id,
         )
 
 

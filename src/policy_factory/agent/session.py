@@ -95,20 +95,18 @@ def _is_transient_error(error: Exception) -> bool:
     return False
 
 
+_CONTEXT_OVERFLOW_PATTERNS = (
+    "prompt is too long",
+    "context_length_exceeded",
+    "maximum context length",
+    "too many tokens",
+)
+
+
 def _is_context_overflow(error: Exception) -> bool:
     """Check if the error indicates context length exceeded."""
     error_str = str(error).lower()
-
-    if "prompt is too long" in error_str:
-        return True
-    if "context_length_exceeded" in error_str:
-        return True
-    if "maximum context length" in error_str:
-        return True
-    if "too many tokens" in error_str:
-        return True
-
-    return False
+    return any(pattern in error_str for pattern in _CONTEXT_OVERFLOW_PATTERNS)
 
 
 class AgentSession:
@@ -166,7 +164,7 @@ class AgentSession:
                 tool_set=tool_set,
             )
 
-        options = ClaudeAgentOptions(
+        return ClaudeAgentOptions(
             model=self._config.model,
             system_prompt=self._config.system_prompt or "",
             allowed_tools=allowed_tools,
@@ -175,7 +173,104 @@ class AgentSession:
             cwd=str(self._data_dir),
         )
 
-        return options
+    async def _emit_text_blocks(
+        self,
+        message: Any,
+        output_parts: list[str],
+    ) -> None:
+        """Extract text blocks from an AssistantMessage and emit chunk events.
+
+        Args:
+            message: An SDK AssistantMessage with a ``content`` attribute.
+            output_parts: Accumulator list for non-empty text blocks.
+        """
+        for block in message.content:
+            if hasattr(block, "text"):
+                text = str(block.text)
+                if text.strip():
+                    output_parts.append(text)
+                    await self._emitter.emit(
+                        AgentTextChunk(
+                            cascade_id=self._context_id,
+                            agent_label=self._agent_label,
+                            text=text,
+                        )
+                    )
+
+    async def _execute_single_attempt(
+        self,
+        prompt: str,
+        options: ClaudeAgentOptions,
+    ) -> AgentResult:
+        """Execute a single SDK client session and return the result.
+
+        Creates a ``ClaudeSDKClient``, sends the prompt, processes the
+        message stream, and assembles an ``AgentResult``.
+
+        Raises:
+            ContextOverflowError: If the result indicates context overflow.
+        """
+        full_output_parts: list[str] = []
+        result_is_error: bool = False
+        result_text: str | None = None
+        result_cost: float | None = None
+        result_num_turns: int | None = None
+        result_session_id: str | None = None
+
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query(prompt)
+
+            async for message in client.receive_response():
+                msg_type = type(message).__name__
+
+                if msg_type == "AssistantMessage" and hasattr(message, "content"):
+                    await self._emit_text_blocks(message, full_output_parts)
+
+                if hasattr(message, "is_error"):
+                    result_is_error = bool(message.is_error)
+                    result_text = getattr(message, "result", None)
+                    result_cost = getattr(message, "total_cost_usd", None)
+                    result_num_turns = getattr(message, "num_turns", None)
+                    result_session_id = getattr(message, "session_id", None)
+
+                    if result_is_error and result_text:
+                        if _is_context_overflow(Exception(result_text)):
+                            raise ContextOverflowError(
+                                str(result_text),
+                                session_id=result_session_id,
+                            )
+
+        full_output = "\n\n".join(full_output_parts)
+        if not result_text:
+            result_text = full_output
+
+        return AgentResult(
+            is_error=result_is_error,
+            result_text=result_text or "",
+            total_cost_usd=result_cost,
+            num_turns=result_num_turns,
+            full_output=full_output,
+            session_id=result_session_id,
+        )
+
+    def _classify_exception(self, exc: Exception) -> None:
+        """Raise a typed error if the exception is non-transient and non-retryable.
+
+        Raises:
+            ContextOverflowError: If the exception indicates context overflow.
+            AgentError: If the exception indicates an authentication failure.
+        """
+        if _is_context_overflow(exc):
+            raise ContextOverflowError(str(exc)) from exc
+
+        error_str = str(exc).lower()
+        auth_keywords = ("not found", "not installed", "auth", "login", "token")
+        if any(kw in error_str for kw in auth_keywords):
+            raise AgentError(
+                f"Authentication failed: {exc}",
+                agent_role=self._agent_label,
+                cascade_id=self._context_id,
+            ) from exc
 
     async def run(self, prompt: str) -> AgentResult:
         """Run a prompt to completion with retry logic.
@@ -199,90 +294,14 @@ class AgentSession:
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                # --- SDK client lifecycle ---
-                full_output_parts: list[str] = []
-                result_is_error: bool = False
-                result_text: str | None = None
-                result_cost: float | None = None
-                result_num_turns: int | None = None
-                result_session_id: str | None = None
-
-                async with ClaudeSDKClient(options=options) as client:
-                    await client.query(prompt)
-
-                    async for message in client.receive_response():
-                        msg_type = type(message).__name__
-
-                        # --- AssistantMessage: emit text chunk events ---
-                        if msg_type == "AssistantMessage" and hasattr(message, "content"):
-                            for block in message.content:
-                                if hasattr(block, "text"):
-                                    text = str(block.text)
-                                    if text.strip():
-                                        full_output_parts.append(text)
-                                        await self._emitter.emit(
-                                            AgentTextChunk(
-                                                cascade_id=self._context_id,
-                                                agent_label=self._agent_label,
-                                                text=text,
-                                            )
-                                        )
-
-                        # --- ResultMessage: extract result fields ---
-                        if hasattr(message, "is_error"):
-                            result_is_error = bool(message.is_error)
-                            result_text = getattr(message, "result", None)
-                            result_cost = getattr(message, "total_cost_usd", None)
-                            result_num_turns = getattr(message, "num_turns", None)
-                            result_session_id = getattr(message, "session_id", None)
-
-                            # Check for context overflow in error result
-                            if result_is_error and result_text:
-                                if _is_context_overflow(
-                                    Exception(result_text)
-                                ):
-                                    raise ContextOverflowError(
-                                        str(result_text),
-                                        session_id=result_session_id,
-                                    )
-
-                # Build the full output from all text blocks
-                full_output = "\n\n".join(full_output_parts)
-
-                # result_text falls back to full_output when None or empty
-                if not result_text:
-                    result_text = full_output
-
-                return AgentResult(
-                    is_error=result_is_error,
-                    result_text=result_text or "",
-                    total_cost_usd=result_cost,
-                    num_turns=result_num_turns,
-                    full_output=full_output,
-                    session_id=result_session_id,
-                )
+                return await self._execute_single_attempt(prompt, options)
 
             except ContextOverflowError:
                 raise  # Never retry context overflow
 
             except Exception as exc:
                 last_error = exc
-
-                # Check for context overflow in exception message
-                if _is_context_overflow(exc):
-                    raise ContextOverflowError(str(exc)) from exc
-
-                # Check for authentication failure (non-transient)
-                error_str = str(exc).lower()
-                if any(
-                    kw in error_str
-                    for kw in ("not found", "not installed", "auth", "login", "token")
-                ):
-                    raise AgentError(
-                        f"Authentication failed: {exc}",
-                        agent_role=self._agent_label,
-                        cascade_id=self._context_id,
-                    ) from exc
+                self._classify_exception(exc)
 
                 # Transient check
                 if attempt < MAX_RETRIES and _is_transient_error(exc):
