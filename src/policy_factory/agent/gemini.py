@@ -1,9 +1,12 @@
 """Gemini client for lightweight agent tasks.
 
 Provides a direct google-genai integration for roles that don't need
-Claude CLI tools (MCP file tools, WebSearch).  These roles are pure
-text-in / text-out transformations — classification, synthesis, idea
-generation, idea evaluation, values seeding.
+Claude CLI tools (MCP file tools).  These roles include:
+
+- **Text-only** — classification, synthesis, idea generation, idea
+  evaluation, values seeding.  Pure text-in / text-out.
+- **Search-grounded** — heartbeat skim and triage.  Uses Google Search
+  grounding to access real-time web information.
 
 Using Gemini Flash for these tasks is ~40x cheaper than Claude and
 avoids the Claude CLI requirement entirely.
@@ -32,15 +35,7 @@ logging.getLogger("google_genai").setLevel(logging.ERROR)
 
 
 def _ensure_api_key() -> str | None:
-    """Resolve a Google API key from the environment.
-
-    Checks ``GOOGLE_API_KEY`` first, falls back to ``GEMINI_API_KEY``
-    (copying it to ``GOOGLE_API_KEY`` for SDK compatibility), and loads
-    ``.env`` files via ``python-dotenv`` if available.
-
-    Returns:
-        The API key string, or ``None`` if no key is found.
-    """
+    """Resolve a Google API key from the environment."""
     try:
         from dotenv import load_dotenv
         load_dotenv()
@@ -61,14 +56,7 @@ def _ensure_api_key() -> str | None:
 
 
 def is_gemini_model(model: str | None) -> bool:
-    """Check whether a model string refers to a Gemini model.
-
-    Args:
-        model: Model identifier string, or ``None``.
-
-    Returns:
-        ``True`` if the model starts with ``"gemini-"`` (case-insensitive).
-    """
+    """Check whether a model string refers to a Gemini model."""
     if model is None:
         return False
     return model.lower().startswith("gemini-")
@@ -78,17 +66,18 @@ async def generate(
     prompt: str,
     model: str = "gemini-2.5-flash",
     system_prompt: str | None = None,
+    use_search: bool = False,
 ) -> str:
     """Call Gemini and return the text response.
 
-    This is a single-shot generation — no tool loop, no session state.
-    Runs the blocking ``google-genai`` call in an executor to avoid
-    blocking the event loop.
+    When ``use_search=True``, enables Google Search grounding so the
+    model can access real-time web information.
 
     Args:
         prompt: The user prompt to send.
-        model: Gemini model identifier (e.g. ``"gemini-2.5-flash"``).
+        model: Gemini model identifier.
         system_prompt: Optional system instruction.
+        use_search: Enable Google Search grounding for web-aware tasks.
 
     Returns:
         The model's text response.
@@ -107,18 +96,26 @@ async def generate(
 
     def _call() -> str:
         from google import genai
+        from google.genai import types
 
         client = genai.Client(api_key=api_key)
 
-        # Build config with optional system instruction
-        config: dict = {}
+        # Build config with optional system instruction and tools
+        config_kwargs: dict = {}
         if system_prompt:
-            config["system_instruction"] = system_prompt
+            config_kwargs["system_instruction"] = system_prompt
+
+        if use_search:
+            config_kwargs["tools"] = [
+                types.Tool(google_search=types.GoogleSearch())
+            ]
+
+        config = types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
 
         response = client.models.generate_content(
             model=model,
             contents=prompt,
-            config=config if config else None,
+            config=config,
         )
 
         return response.text or ""

@@ -290,9 +290,16 @@ async def _run_tier1(
     emitter: EventEmitter,
     data_dir: Path,
 ) -> TierResult:
-    """Run Tier 1: news skim with Haiku."""
+    """Run Tier 1: news skim with Gemini Flash.
+
+    Fetches headlines from Yle's RSS feeds, then sends them to the
+    model for analysis against the current situational awareness.
+    No web search tool is needed — the news is pre-fetched.
+    """
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.data.layers import read_narrative
+
+    from .news import fetch_yle_news, format_news_for_prompt
 
     sa_summary = read_narrative(data_dir, "situational-awareness")
     if not sa_summary:
@@ -300,11 +307,16 @@ async def _run_tier1(
 
     current_date = date.today().isoformat()
 
+    # Fetch live headlines from Yle RSS feeds
+    news_items = await fetch_yle_news()
+    news_headlines = format_news_for_prompt(news_items)
+
     prompt = build_agent_prompt(
         "heartbeat",
         "skim",
         current_date=current_date,
         sa_summary=sa_summary,
+        news_headlines=news_headlines,
     )
 
     return await _run_tier_agent(
