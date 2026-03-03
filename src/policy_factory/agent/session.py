@@ -26,7 +26,7 @@ from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 
 from policy_factory.events import AgentTextChunk, EventEmitter
 
-from .config import AgentConfig, resolve_allowed_tools, resolve_tool_set
+from .config import AgentConfig, resolve_allowed_tools, resolve_tool_set, resolve_use_search
 from .errors import AgentError, ContextOverflowError
 from .gemini import generate as gemini_generate, is_gemini_model
 from .tools import TOOL_SET_NONE, create_tools_server

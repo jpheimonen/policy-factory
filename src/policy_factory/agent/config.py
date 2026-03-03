@@ -50,14 +50,15 @@ AgentRole = Literal[
 #   Gemini 2.5 Flash — cheap text-in/text-out (synthesis, ideas, values-seed)
 #   Gemini 2.5 Flash Lite — cheapest tier (classifier)
 _DEFAULT_MODELS: dict[str, str] = {
-    # --- Claude models (need CLI tools) ---
+    # --- Claude models (need MCP file tools via CLI) ---
     "generator": "claude-sonnet-4-20250514",
     "critic": "claude-sonnet-4-20250514",
-    "heartbeat-skim": "claude-sonnet-4-20250514",
-    "heartbeat-triage": "claude-sonnet-4-20250514",
     "heartbeat-sa-update": "claude-sonnet-4-20250514",
     "seed": "claude-sonnet-4-20250514",
-    # --- Gemini models (tool-free, cheap) ---
+    # --- Gemini models (heartbeat skim/triage get RSS news in prompt) ---
+    "heartbeat-skim": "gemini-2.5-flash",
+    "heartbeat-triage": "gemini-2.5-flash",
+    # --- Gemini models (text-only, cheap) ---
     "synthesis": "gemini-2.5-flash",
     "classifier": "gemini-2.5-flash-lite",
     "idea-evaluator": "gemini-2.5-flash",
@@ -121,10 +122,10 @@ _ALLOWED_TOOLS_BY_ROLE: dict[str, list[str]] = {
     "synthesis": [],
     # Classifier agents analyze content, no tools needed
     "classifier": [],
-    # Heartbeat skim uses web search to find relevant news
-    "heartbeat-skim": ["WebSearch"],
-    # Heartbeat triage evaluates items using web search
-    "heartbeat-triage": ["WebSearch"],
+    # Heartbeat skim: news pre-fetched via RSS, pure text analysis
+    "heartbeat-skim": [],
+    # Heartbeat triage: receives flagged items in prompt, pure text analysis
+    "heartbeat-triage": [],
     # Heartbeat SA update needs file tools and web search
     "heartbeat-sa-update": [MCP_SERVER_REF, "WebSearch"],
     # Seed agent needs file tools and web search

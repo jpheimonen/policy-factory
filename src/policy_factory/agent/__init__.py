@@ -14,6 +14,7 @@ Public API:
 - ``resolve_model`` — Resolve model name for an agent role.
 - ``resolve_allowed_tools`` — Resolve allowed_tools list for a role.
 - ``resolve_tool_set`` — Resolve MCP tool set identifier for a role.
+- ``resolve_use_search`` — Resolve Google Search grounding flag for a role.
 - ``build_agent_prompt`` — Load an agent template with variable substitution.
 - ``is_gemini_model`` — Check if a model string is a Gemini model.
 - File tools: ``list_files``, ``read_file``, ``write_file``, ``delete_file``
@@ -26,6 +27,7 @@ from policy_factory.agent.config import (
     resolve_allowed_tools,
     resolve_model,
     resolve_tool_set,
+    resolve_use_search,
 )
 from policy_factory.agent.errors import AgentError, ContextOverflowError
 from policy_factory.agent.gemini import is_gemini_model
@@ -55,6 +57,7 @@ __all__ = [
     "resolve_allowed_tools",
     "resolve_model",
     "resolve_tool_set",
+    "resolve_use_search",
     "validate_path",
     "write_file",
 ]
