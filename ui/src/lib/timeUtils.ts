@@ -6,6 +6,20 @@
  */
 
 /**
+ * Format the duration between two ISO timestamps as a compact string.
+ *
+ * Returns "42s" for sub-minute durations, or "3m 12s" for longer durations.
+ */
+export function formatDuration(start: string, end: string): string {
+  const diffMs = new Date(end).getTime() - new Date(start).getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return `${diffSec}s`;
+  const min = Math.floor(diffSec / 60);
+  const sec = diffSec % 60;
+  return `${min}m ${sec}s`;
+}
+
+/**
  * Format an ISO timestamp as a human-readable relative time string.
  *
  * Returns simple labels like "just now", "5m ago", "3h ago",

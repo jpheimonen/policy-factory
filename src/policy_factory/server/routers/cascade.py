@@ -105,6 +105,56 @@ class MemoStatusUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _serialize_queue_entries(queue: list[Any]) -> list[dict[str, Any]]:
+    """Convert queue entries to JSON-serialisable dicts."""
+    return [
+        {
+            "id": e.id,
+            "trigger_source": e.trigger_source,
+            "starting_layer": e.starting_layer,
+            "queued_at": e.queued_at.isoformat(),
+        }
+        for e in queue
+    ]
+
+
+def _get_controller_in_state(cascade_id: str, required_state: str) -> Any:
+    """Look up a cascade controller and verify it is in the expected state.
+
+    Raises:
+        HTTPException 404: If no active controller exists for *cascade_id*.
+        HTTPException 409: If the controller is not in *required_state*.
+
+    Returns:
+        The :class:`CascadeController` instance.
+    """
+    from policy_factory.cascade.controller import CascadeState
+
+    controller = get_cascade_controller(cascade_id)
+    if controller is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Active cascade not found: {cascade_id}",
+        )
+
+    expected = CascadeState(required_state)
+    if controller.state != expected:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Cascade is not {required_state} "
+                f"(state: {controller.state.value})"
+            ),
+        )
+
+    return controller
+
+
+# ---------------------------------------------------------------------------
 # Trigger endpoints
 # ---------------------------------------------------------------------------
 
@@ -232,19 +282,13 @@ async def get_cascade_status(
             last_completed_id = cascade.id
             break
 
+    serialized_queue = _serialize_queue_entries(queue)
+
     if active is None:
         return CascadeStatusResponse(
             status="idle",
             queue_depth=len(queue),
-            queue_entries=[
-                {
-                    "id": e.id,
-                    "trigger_source": e.trigger_source,
-                    "starting_layer": e.starting_layer,
-                    "queued_at": e.queued_at.isoformat(),
-                }
-                for e in queue
-            ],
+            queue_entries=serialized_queue,
             last_completed_id=last_completed_id,
         )
 
@@ -257,15 +301,7 @@ async def get_cascade_status(
         started_at=active.created_at.isoformat(),
         error_message=active.error_message,
         queue_depth=len(queue),
-        queue_entries=[
-            {
-                "id": e.id,
-                "trigger_source": e.trigger_source,
-                "starting_layer": e.starting_layer,
-                "queued_at": e.queued_at.isoformat(),
-            }
-            for e in queue
-        ],
+        queue_entries=serialized_queue,
         last_completed_id=last_completed_id,
     )
 
@@ -363,28 +399,9 @@ async def pause_cascade(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
 ) -> dict[str, Any]:
     """Pause a running cascade."""
-    controller = get_cascade_controller(cascade_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Active cascade not found: {cascade_id}",
-        )
-
-    # Request pause — the orchestrator will handle the actual pause
-    from policy_factory.cascade.controller import CascadeState
-
-    if controller.state != CascadeState.RUNNING:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cascade is not running (state: {controller.state.value})",
-        )
-
+    controller = _get_controller_in_state(cascade_id, "running")
     controller.request_pause()
-
-    return {
-        "cascade_id": cascade_id,
-        "status": "pause_requested",
-    }
+    return {"cascade_id": cascade_id, "status": "pause_requested"}
 
 
 @router.post("/{cascade_id}/resume")
@@ -393,20 +410,7 @@ async def resume_cascade(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
 ) -> dict[str, Any]:
     """Resume a paused cascade."""
-    controller = get_cascade_controller(cascade_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Active cascade not found: {cascade_id}",
-        )
-
-    from policy_factory.cascade.controller import CascadeState
-
-    if controller.state != CascadeState.PAUSED:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cascade is not paused (state: {controller.state.value})",
-        )
+    controller = _get_controller_in_state(cascade_id, "paused")
 
     success = await controller.resume()
     if not success:
@@ -415,10 +419,7 @@ async def resume_cascade(
             detail="Failed to resume cascade",
         )
 
-    return {
-        "cascade_id": cascade_id,
-        "status": "resumed",
-    }
+    return {"cascade_id": cascade_id, "status": "resumed"}
 
 
 @router.post("/{cascade_id}/cancel")
@@ -427,20 +428,7 @@ async def cancel_cascade(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
 ) -> dict[str, Any]:
     """Cancel a paused cascade."""
-    controller = get_cascade_controller(cascade_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Active cascade not found: {cascade_id}",
-        )
-
-    from policy_factory.cascade.controller import CascadeState
-
-    if controller.state != CascadeState.PAUSED:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cascade is not paused (state: {controller.state.value})",
-        )
+    controller = _get_controller_in_state(cascade_id, "paused")
 
     success = await controller.cancel()
     if not success:
@@ -449,10 +437,7 @@ async def cancel_cascade(
             detail="Failed to cancel cascade",
         )
 
-    return {
-        "cascade_id": cascade_id,
-        "status": "cancelled",
-    }
+    return {"cascade_id": cascade_id, "status": "cancelled"}
 
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "@/i18n/index.ts";
 import { apiRequest } from "@/lib/apiClient.ts";
-import { formatRelativeTime } from "@/lib/timeUtils.ts";
+import { formatDuration, formatRelativeTime } from "@/lib/timeUtils.ts";
 import { Badge, Button, Text } from "@/components/atoms/index.ts";
 import { LoadingState, ErrorState, EmptyState } from "@/components/molecules/index.ts";
 import {
@@ -91,15 +91,6 @@ const TIER_LABEL_KEYS: Record<number, string> = {
   3: "heartbeat.tierSaUpdateLabel",
   4: "heartbeat.tierCascade",
 };
-
-function formatDuration(start: string, end: string): string {
-  const diffMs = new Date(end).getTime() - new Date(start).getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return `${diffSec}s`;
-  const min = Math.floor(diffSec / 60);
-  const sec = diffSec % 60;
-  return `${min}m ${sec}s`;
-}
 
 /**
  * Derive a human-readable outcome label and badge variant from a heartbeat run.

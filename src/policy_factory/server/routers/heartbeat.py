@@ -36,6 +36,26 @@ router = APIRouter(prefix="/api/heartbeat", tags=["heartbeat"])
 # ---------------------------------------------------------------------------
 
 
+def _try_import_cascade_trigger() -> Any | None:
+    """Return ``trigger_cascade`` if the cascade module is available."""
+    try:
+        from policy_factory.cascade.orchestrator import trigger_cascade
+
+        return trigger_cascade
+    except ImportError:
+        return None
+
+
+def _try_import_idea_generator() -> Any | None:
+    """Return ``generate_ideas`` if the ideas module is available."""
+    try:
+        from policy_factory.ideas.generator import generate_ideas
+
+        return generate_ideas
+    except ImportError:
+        return None
+
+
 @router.post("/trigger")
 async def trigger_heartbeat(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
@@ -48,34 +68,17 @@ async def trigger_heartbeat(
 
     Returns 409 if a heartbeat is already running.
     """
-    # Check concurrency guard
     if store.has_running_heartbeat():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A heartbeat is already running",
         )
 
-    # Get dependencies
     emitter = get_event_emitter()
     data_dir = get_data_dir()
+    cascade_trigger = _try_import_cascade_trigger()
+    idea_generator = _try_import_idea_generator()
 
-    # Import cascade trigger and idea generator
-    cascade_trigger = None
-    idea_generator = None
-
-    try:
-        from policy_factory.cascade.orchestrator import trigger_cascade
-        cascade_trigger = trigger_cascade
-    except ImportError:
-        pass
-
-    try:
-        from policy_factory.ideas.generator import generate_ideas
-        idea_generator = generate_ideas
-    except ImportError:
-        pass
-
-    # Import and launch orchestrator as background task
     from policy_factory.heartbeat.orchestrator import run_heartbeat
 
     async def _run() -> None:

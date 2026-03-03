@@ -20,7 +20,7 @@ import { useCascadeStore } from "@/stores/cascadeStore.ts";
 import type { CascadeStep } from "@/stores/cascadeStore.ts";
 import { LAYER_NAME_KEYS } from "@/lib/layerConstants.ts";
 import { apiRequest } from "@/lib/apiClient.ts";
-import { formatRelativeTime } from "@/lib/timeUtils.ts";
+import { formatDuration, formatRelativeTime } from "@/lib/timeUtils.ts";
 import { Badge, Button, Text } from "@/components/atoms/index.ts";
 import { EmptyState } from "@/components/molecules/index.ts";
 import { useAutoScroll } from "@/hooks/useAutoScroll.ts";
@@ -171,15 +171,6 @@ function getLayersInCascade(startingLayer: string): string[] {
   const startIdx = LAYER_ORDER.indexOf(startingLayer);
   if (startIdx === -1) return [...LAYER_ORDER];
   return LAYER_ORDER.slice(startIdx) as string[];
-}
-
-function formatDuration(start: string, end: string): string {
-  const diffMs = new Date(end).getTime() - new Date(start).getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return `${diffSec}s`;
-  const min = Math.floor(diffSec / 60);
-  const sec = diffSec % 60;
-  return `${min}m ${sec}s`;
 }
 
 function getTriggerSourceLabel(source: string, t: (key: string) => string): string {
