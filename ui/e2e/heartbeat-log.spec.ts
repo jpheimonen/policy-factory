@@ -1,4 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { setupAndLogin, getAdminToken } from "./helpers";
 
 /**
  * E2E tests for the heartbeat log page.
@@ -6,17 +7,6 @@ import { test, expect, Page } from "@playwright/test";
  * Verifies: page access, navigation link, empty state,
  * run list display, expand/collapse of run detail.
  */
-
-async function setupAndLogin(page: Page) {
-  await page.request.post("/api/auth/register", {
-    data: { email: "heartbeat-log@test.com", password: "password123" },
-  });
-  await page.goto("/login");
-  await page.getByLabel(/email/i).fill("heartbeat-log@test.com");
-  await page.getByLabel(/password/i).fill("password123");
-  await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
-  await expect(page).toHaveURL(/\/$/);
-}
 
 test.describe("Heartbeat Log Page", () => {
   test("heartbeat log page is accessible at /heartbeat", async ({ page }) => {
@@ -69,14 +59,11 @@ test.describe("Heartbeat Log Page", () => {
     page,
   }) => {
     await setupAndLogin(page);
+    const token = await getAdminToken(page);
 
     // Attempt to trigger a heartbeat — this may fail in E2E due to
     // external dependencies, but we try anyway for environments where
     // it works.
-    const loginResp = await page.request.post("/api/auth/login", {
-      data: { email: "heartbeat-log@test.com", password: "password123" },
-    });
-    const { token } = await loginResp.json();
 
     // Try triggering heartbeat — we don't fail the test if this doesn't work
     const triggerResp = await page.request.post("/api/heartbeat/trigger", {
@@ -101,12 +88,7 @@ test.describe("Heartbeat Log Page", () => {
     page,
   }) => {
     await setupAndLogin(page);
-
-    // Get auth token
-    const loginResp = await page.request.post("/api/auth/login", {
-      data: { email: "heartbeat-log@test.com", password: "password123" },
-    });
-    const { token } = await loginResp.json();
+    const token = await getAdminToken(page);
 
     // Try triggering heartbeat
     const triggerResp = await page.request.post("/api/heartbeat/trigger", {

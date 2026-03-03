@@ -1,21 +1,11 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { setupAndLogin } from "./helpers";
 
 /**
  * E2E tests for responsive behaviour.
  *
  * Verifies: pages are usable at 768px viewport width.
  */
-
-async function setupAndLogin(page: Page) {
-  await page.request.post("/api/auth/register", {
-    data: { email: "responsive@test.com", password: "password123" },
-  });
-  await page.goto("/login");
-  await page.getByLabel(/email/i).fill("responsive@test.com");
-  await page.getByLabel(/password/i).fill("password123");
-  await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
-  await expect(page).toHaveURL(/\/$/);
-}
 
 test.describe("Responsive Behaviour", () => {
   test("stack overview is usable at 768px", async ({ page }) => {

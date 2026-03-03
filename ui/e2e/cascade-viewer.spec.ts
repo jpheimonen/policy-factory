@@ -1,4 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { setupAndLogin, getAdminToken } from "./helpers";
 
 /**
  * E2E tests for the live cascade viewer.
@@ -6,17 +7,6 @@ import { test, expect, Page } from "@playwright/test";
  * Verifies: cascade display, progress indicator, streaming text,
  * paused cascade controls.
  */
-
-async function setupAndLogin(page: Page) {
-  await page.request.post("/api/auth/register", {
-    data: { email: "cascade@test.com", password: "password123" },
-  });
-  await page.goto("/login");
-  await page.getByLabel(/email/i).fill("cascade@test.com");
-  await page.getByLabel(/password/i).fill("password123");
-  await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
-  await expect(page).toHaveURL(/\/$/);
-}
 
 test.describe("Cascade Viewer", () => {
   test("cascade page is accessible", async ({ page }) => {
@@ -50,12 +40,7 @@ test.describe("Cascade Transcript", () => {
     page,
   }) => {
     await setupAndLogin(page);
-
-    // Get auth token for API calls
-    const loginResp = await page.request.post("/api/auth/login", {
-      data: { email: "cascade@test.com", password: "password123" },
-    });
-    const { token } = await loginResp.json();
+    const token = await getAdminToken(page);
 
     // Check if any cascade history exists
     const historyResp = await page.request.get("/api/cascade/history", {
@@ -105,12 +90,7 @@ test.describe("Cascade Transcript", () => {
     page,
   }) => {
     await setupAndLogin(page);
-
-    // Get auth token
-    const loginResp = await page.request.post("/api/auth/login", {
-      data: { email: "cascade@test.com", password: "password123" },
-    });
-    const { token } = await loginResp.json();
+    const token = await getAdminToken(page);
 
     // Check for existing cascade history
     const historyResp = await page.request.get("/api/cascade/history", {
@@ -173,12 +153,7 @@ test.describe("Cascade Transcript", () => {
     page,
   }) => {
     await setupAndLogin(page);
-
-    // Get auth token
-    const loginResp = await page.request.post("/api/auth/login", {
-      data: { email: "cascade@test.com", password: "password123" },
-    });
-    const { token } = await loginResp.json();
+    const token = await getAdminToken(page);
 
     const historyResp = await page.request.get("/api/cascade/history", {
       headers: { Authorization: `Bearer ${token}` },
@@ -234,12 +209,7 @@ test.describe("Cascade Transcript", () => {
 
   test("expanding transcript shows output text content", async ({ page }) => {
     await setupAndLogin(page);
-
-    // Get auth token
-    const loginResp = await page.request.post("/api/auth/login", {
-      data: { email: "cascade@test.com", password: "password123" },
-    });
-    const { token } = await loginResp.json();
+    const token = await getAdminToken(page);
 
     const historyResp = await page.request.get("/api/cascade/history", {
       headers: { Authorization: `Bearer ${token}` },

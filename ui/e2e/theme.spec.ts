@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { setupAndLogin, TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD } from "./helpers";
 
 /**
  * E2E tests for theme switching.
@@ -11,26 +12,14 @@ test.describe("Theme Switching", () => {
     // Emulate dark mode preference
     await page.emulateMedia({ colorScheme: "dark" });
 
-    await page.request.post("/api/auth/register", {
-      data: { email: "theme@test.com", password: "password123" },
-    });
-    await page.goto("/login");
-    await page.getByLabel(/email/i).fill("theme@test.com");
-    await page.getByLabel(/password/i).fill("password123");
-    await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
+    await setupAndLogin(page);
 
     // The page should render (verify no crash)
     await expect(page.locator("body")).toBeVisible();
   });
 
   test("theme toggle changes appearance", async ({ page }) => {
-    await page.request.post("/api/auth/register", {
-      data: { email: "toggle@test.com", password: "password123" },
-    });
-    await page.goto("/login");
-    await page.getByLabel(/email/i).fill("toggle@test.com");
-    await page.getByLabel(/password/i).fill("password123");
-    await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
+    await setupAndLogin(page);
 
     // Find theme toggle button
     const themeToggle = page.getByRole("button", {
@@ -56,13 +45,7 @@ test.describe("Theme Switching", () => {
   });
 
   test("theme preference persists across reloads", async ({ page }) => {
-    await page.request.post("/api/auth/register", {
-      data: { email: "persist@test.com", password: "password123" },
-    });
-    await page.goto("/login");
-    await page.getByLabel(/email/i).fill("persist@test.com");
-    await page.getByLabel(/password/i).fill("password123");
-    await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
+    await setupAndLogin(page);
 
     // Toggle theme if available
     const themeToggle = page.getByRole("button", {

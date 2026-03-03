@@ -1,4 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { setupAndLogin } from "./helpers";
 
 /**
  * E2E tests for the stack overview (home page).
@@ -6,22 +7,9 @@ import { test, expect, Page } from "@playwright/test";
  * Verifies: 5 layer cards displayed, metadata shown, navigation to layer detail.
  */
 
-async function loginAsAdmin(page: Page) {
-  // Register a user via API
-  await page.request.post("/api/auth/register", {
-    data: { email: "admin@test.com", password: "password123" },
-  });
-
-  await page.goto("/login");
-  await page.getByLabel(/email/i).fill("admin@test.com");
-  await page.getByLabel(/password/i).fill("password123");
-  await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
-  await expect(page).toHaveURL(/\/$/);
-}
-
 test.describe("Stack Overview", () => {
   test("displays all 5 layer cards", async ({ page }) => {
-    await loginAsAdmin(page);
+    await setupAndLogin(page);
 
     // Should display all 5 layers
     const layerNames = [
@@ -38,7 +26,7 @@ test.describe("Stack Overview", () => {
   });
 
   test("clicking a layer card navigates to detail view", async ({ page }) => {
-    await loginAsAdmin(page);
+    await setupAndLogin(page);
 
     // Click on a layer card
     await page.getByText("Values").first().click();
@@ -48,7 +36,7 @@ test.describe("Stack Overview", () => {
   });
 
   test("input panel is visible", async ({ page }) => {
-    await loginAsAdmin(page);
+    await setupAndLogin(page);
 
     // The input panel should be visible
     const inputPanel = page.getByPlaceholder(

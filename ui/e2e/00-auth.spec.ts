@@ -1,9 +1,14 @@
 import { test, expect } from "@playwright/test";
+import { TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD } from "./helpers";
 
 /**
  * E2E tests for the authentication flow.
  *
  * Verifies: first-visit registration, login/logout, credential validation.
+ *
+ * NOTE: These tests are ordered — "first visit shows registration page"
+ * must run before "register first user" because the global setup clears
+ * the users table.
  */
 
 test.describe("Authentication Flow", () => {
@@ -18,8 +23,10 @@ test.describe("Authentication Flow", () => {
   test("register first user redirects to home", async ({ page }) => {
     await page.goto("/register");
 
-    await page.getByLabel(/email/i).fill("admin@test.com");
-    await page.getByLabel(/password/i).fill("password123");
+    await page.getByLabel(/email/i).fill(TEST_ADMIN_EMAIL);
+    // Use exact match for "Password" to avoid matching "Confirm password"
+    await page.getByLabel("Password", { exact: true }).fill(TEST_ADMIN_PASSWORD);
+    await page.getByLabel("Confirm password").fill(TEST_ADMIN_PASSWORD);
     await page.getByRole("button", { name: /register|sign up|create/i }).click();
 
     // After registration, should be on the home page
@@ -27,11 +34,12 @@ test.describe("Authentication Flow", () => {
   });
 
   test("logout redirects to login", async ({ page }) => {
-    // Register first
-    await page.goto("/register");
-    await page.getByLabel(/email/i).fill("admin@test.com");
-    await page.getByLabel(/password/i).fill("password123");
-    await page.getByRole("button", { name: /register|sign up|create/i }).click();
+    // Login with the admin account (user was created by previous test)
+    await page.goto("/login");
+    await page.getByLabel(/email/i).fill(TEST_ADMIN_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill(TEST_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
+    await expect(page).toHaveURL(/\/$/);
 
     // Find and click logout
     const logoutButton = page.getByRole("button", { name: /logout|sign out/i });
@@ -43,14 +51,14 @@ test.describe("Authentication Flow", () => {
   });
 
   test("login with valid credentials", async ({ page }) => {
-    // Set up user via API
+    // Ensure user exists (may already exist from previous tests)
     await page.request.post("/api/auth/register", {
-      data: { email: "login@test.com", password: "password123" },
+      data: { email: TEST_ADMIN_EMAIL, password: TEST_ADMIN_PASSWORD },
     });
 
     await page.goto("/login");
-    await page.getByLabel(/email/i).fill("login@test.com");
-    await page.getByLabel(/password/i).fill("password123");
+    await page.getByLabel(/email/i).fill(TEST_ADMIN_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill(TEST_ADMIN_PASSWORD);
     await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
 
     // Should reach the home page
@@ -58,14 +66,14 @@ test.describe("Authentication Flow", () => {
   });
 
   test("login with invalid credentials shows error", async ({ page }) => {
-    // Set up user via API
+    // Ensure user exists
     await page.request.post("/api/auth/register", {
-      data: { email: "error@test.com", password: "password123" },
+      data: { email: TEST_ADMIN_EMAIL, password: TEST_ADMIN_PASSWORD },
     });
 
     await page.goto("/login");
-    await page.getByLabel(/email/i).fill("error@test.com");
-    await page.getByLabel(/password/i).fill("wrongpassword");
+    await page.getByLabel(/email/i).fill(TEST_ADMIN_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill("wrongpassword");
     await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
 
     // Should show an error message

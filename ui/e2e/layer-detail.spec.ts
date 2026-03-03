@@ -1,4 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { setupAndLogin, getAdminToken } from "./helpers";
 
 /**
  * E2E tests for the layer detail view.
@@ -6,17 +7,6 @@ import { test, expect, Page } from "@playwright/test";
  * Verifies: narrative summary, item cards, navigation to item detail,
  * refresh button, feedback memos.
  */
-
-async function setupAndLogin(page: Page) {
-  await page.request.post("/api/auth/register", {
-    data: { email: "detail@test.com", password: "password123" },
-  });
-  await page.goto("/login");
-  await page.getByLabel(/email/i).fill("detail@test.com");
-  await page.getByLabel(/password/i).fill("password123");
-  await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
-  await expect(page).toHaveURL(/\/$/);
-}
 
 test.describe("Layer Detail View", () => {
   test("shows narrative summary", async ({ page }) => {
@@ -30,12 +20,7 @@ test.describe("Layer Detail View", () => {
 
   test("shows items as cards", async ({ page }) => {
     await setupAndLogin(page);
-
-    // Create a test item via API
-    const loginResp = await page.request.post("/api/auth/login", {
-      data: { email: "detail@test.com", password: "password123" },
-    });
-    const { token } = await loginResp.json();
+    const token = await getAdminToken(page);
 
     await page.request.post("/api/layers/values/items", {
       headers: { Authorization: `Bearer ${token}` },
@@ -56,12 +41,7 @@ test.describe("Layer Detail View", () => {
 
   test("clicking item navigates to detail", async ({ page }) => {
     await setupAndLogin(page);
-
-    // Create item via API
-    const loginResp = await page.request.post("/api/auth/login", {
-      data: { email: "detail@test.com", password: "password123" },
-    });
-    const { token } = await loginResp.json();
+    const token = await getAdminToken(page);
 
     await page.request.post("/api/layers/values/items", {
       headers: { Authorization: `Bearer ${token}` },
