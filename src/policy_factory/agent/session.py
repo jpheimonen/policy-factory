@@ -174,6 +174,11 @@ class AgentSession:
             mcp_servers=mcp_servers,
             permission_mode="bypassPermissions",
             cwd=str(self._data_dir),
+            # Unset CLAUDECODE to allow the Claude CLI to start even when
+            # the server is running inside a Claude Code session (e.g. during
+            # development/testing).  The SDK merges os.environ with this dict,
+            # so setting it to "" effectively clears the nested-session guard.
+            env={"CLAUDECODE": ""},
         )
 
     async def _emit_text_blocks(
