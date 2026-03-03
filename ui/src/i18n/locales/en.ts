@@ -343,6 +343,13 @@ const en = {
     // Streaming text
     waitingForOutput: "Waiting for agent output\u2026",
     streamingPaused: "Streaming paused \u2014 cascade is paused",
+    // Agent run entries in detail panel
+    agentRunsHeading: "Agent Runs",
+    agentRunSuccess: "Success",
+    agentRunFailed: "Failed",
+    expandTranscript: "Show transcript",
+    collapseTranscript: "Hide transcript",
+    noOutputText: "No output text",
   },
 
   // ── Heartbeat ───────────────────────────────────────────────────────
