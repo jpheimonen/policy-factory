@@ -47,13 +47,17 @@ class TestEnsureApiKey:
     def test_gemini_api_key_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
-        key = _ensure_api_key()
+        # Prevent load_dotenv from re-loading GOOGLE_API_KEY from .env
+        with patch("dotenv.load_dotenv", return_value=None):
+            key = _ensure_api_key()
         assert key == "test-gemini-key"
 
     def test_no_key_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        assert _ensure_api_key() is None
+        # Prevent load_dotenv from re-loading keys from .env
+        with patch("dotenv.load_dotenv", return_value=None):
+            assert _ensure_api_key() is None
 
 
 class TestGenerate:
@@ -63,8 +67,10 @@ class TestGenerate:
     async def test_raises_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        with pytest.raises(RuntimeError, match="No Google API key found"):
-            await generate("test prompt")
+        # Prevent load_dotenv from re-loading keys from .env
+        with patch("dotenv.load_dotenv", return_value=None):
+            with pytest.raises(RuntimeError, match="No Google API key found"):
+                await generate("test prompt")
 
     @pytest.mark.asyncio
     async def test_calls_genai_client(self, monkeypatch: pytest.MonkeyPatch) -> None:

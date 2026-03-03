@@ -797,13 +797,12 @@ class TestAgentSessionConfig:
         assert "WebSearch" not in options.allowed_tools
 
     def test_allowed_tools_for_heartbeat_skim(self) -> None:
-        """heartbeat-skim should get WebSearch only."""
+        """heartbeat-skim uses Gemini with RSS — no Claude tools needed."""
         config = AgentConfig(role="heartbeat-skim")
         emitter = EventEmitter()
         session = AgentSession(config, emitter)
         options = session._build_options()
-        assert "WebSearch" in options.allowed_tools
-        assert "mcp__policy-factory-tools" not in options.allowed_tools
+        assert options.allowed_tools == []
 
     def test_allowed_tools_for_seed_role(self) -> None:
         """Seed role should get both MCP server reference and WebSearch."""

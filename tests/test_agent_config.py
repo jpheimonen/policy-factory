@@ -10,6 +10,7 @@ from policy_factory.agent.config import (
     resolve_allowed_tools,
     resolve_model,
     resolve_tool_set,
+    resolve_use_search,
 )
 from policy_factory.agent.tools import TOOL_SET_FULL, TOOL_SET_NONE, TOOL_SET_READ_ONLY
 
@@ -27,13 +28,13 @@ class TestResolveModel:
         model = resolve_model("critic")
         assert "sonnet" in model.lower()
 
-    def test_heartbeat_skim_defaults_to_sonnet(self) -> None:
+    def test_heartbeat_skim_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("heartbeat-skim")
-        assert "sonnet" in model.lower()
+        assert model.startswith("gemini-")
 
-    def test_heartbeat_triage_defaults_to_sonnet(self) -> None:
+    def test_heartbeat_triage_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("heartbeat-triage")
-        assert "sonnet" in model.lower()
+        assert model.startswith("gemini-")
 
     def test_heartbeat_sa_update_defaults_to_sonnet(self) -> None:
         model = resolve_model("heartbeat-sa-update")
@@ -152,17 +153,15 @@ class TestResolveAllowedTools:
         tools = resolve_allowed_tools("classifier")
         assert tools == []
 
-    def test_heartbeat_skim_gets_web_search_only(self) -> None:
+    def test_heartbeat_skim_gets_empty_list(self) -> None:
+        """Heartbeat skim uses Gemini Google Search grounding, no Claude tools."""
         tools = resolve_allowed_tools("heartbeat-skim")
-        assert "WebSearch" in tools
-        assert MCP_SERVER_REF not in tools
-        assert len(tools) == 1
+        assert tools == []
 
-    def test_heartbeat_triage_gets_web_search_only(self) -> None:
+    def test_heartbeat_triage_gets_empty_list(self) -> None:
+        """Heartbeat triage uses Gemini Google Search grounding, no Claude tools."""
         tools = resolve_allowed_tools("heartbeat-triage")
-        assert "WebSearch" in tools
-        assert MCP_SERVER_REF not in tools
-        assert len(tools) == 1
+        assert tools == []
 
     def test_heartbeat_sa_update_gets_mcp_ref_and_web_search(self) -> None:
         tools = resolve_allowed_tools("heartbeat-sa-update")
@@ -242,3 +241,41 @@ class TestResolveToolSet:
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):
             resolve_tool_set("nonexistent-role")
+
+
+class TestResolveUseSearch:
+    """Tests for the resolve_use_search() function."""
+
+    def test_heartbeat_skim_needs_search(self) -> None:
+        assert resolve_use_search("heartbeat-skim") is True
+
+    def test_heartbeat_triage_needs_search(self) -> None:
+        assert resolve_use_search("heartbeat-triage") is True
+
+    def test_generator_no_search(self) -> None:
+        assert resolve_use_search("generator") is False
+
+    def test_critic_no_search(self) -> None:
+        assert resolve_use_search("critic") is False
+
+    def test_synthesis_no_search(self) -> None:
+        assert resolve_use_search("synthesis") is False
+
+    def test_classifier_no_search(self) -> None:
+        assert resolve_use_search("classifier") is False
+
+    def test_seed_no_search(self) -> None:
+        assert resolve_use_search("seed") is False
+
+    def test_values_seed_no_search(self) -> None:
+        assert resolve_use_search("values-seed") is False
+
+    def test_idea_evaluator_no_search(self) -> None:
+        assert resolve_use_search("idea-evaluator") is False
+
+    def test_idea_generator_no_search(self) -> None:
+        assert resolve_use_search("idea-generator") is False
+
+    def test_unknown_role_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Unknown agent role"):
+            resolve_use_search("nonexistent-role")
