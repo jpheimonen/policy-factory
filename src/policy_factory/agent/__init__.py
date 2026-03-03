@@ -1,7 +1,12 @@
 """Agent framework for Policy Factory.
 
+Supports two execution backends, chosen automatically by model name:
+
+- **Claude CLI** (``claude-agent-sdk``) — for roles needing tools
+- **Gemini Flash** (``google-genai``) — for tool-free roles (~40x cheaper)
+
 Public API:
-- ``AgentSession`` — Claude Code SDK session wrapper with retry.
+- ``AgentSession`` — Session wrapper with auto-routing and retry.
 - ``AgentConfig`` — Session configuration dataclass.
 - ``AgentResult`` — Structured result from an agent run.
 - ``AgentError`` — General agent error.
@@ -10,6 +15,7 @@ Public API:
 - ``resolve_allowed_tools`` — Resolve allowed_tools list for a role.
 - ``resolve_tool_set`` — Resolve MCP tool set identifier for a role.
 - ``build_agent_prompt`` — Load an agent template with variable substitution.
+- ``is_gemini_model`` — Check if a model string is a Gemini model.
 - File tools: ``list_files``, ``read_file``, ``write_file``, ``delete_file``
 - ``SandboxViolationError`` — Path validation error.
 - ``validate_path`` — Validate path within sandbox.
@@ -22,6 +28,7 @@ from policy_factory.agent.config import (
     resolve_tool_set,
 )
 from policy_factory.agent.errors import AgentError, ContextOverflowError
+from policy_factory.agent.gemini import is_gemini_model
 from policy_factory.agent.prompts import build_agent_prompt
 from policy_factory.agent.session import AgentResult, AgentSession
 from policy_factory.agent.tools import (
@@ -42,6 +49,7 @@ __all__ = [
     "SandboxViolationError",
     "build_agent_prompt",
     "delete_file",
+    "is_gemini_model",
     "list_files",
     "read_file",
     "resolve_allowed_tools",

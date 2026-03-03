@@ -160,6 +160,7 @@ class TestPackageExports:
         new_names = [
             "resolve_allowed_tools",
             "resolve_tool_set",
+            "is_gemini_model",
         ]
         for name in new_names:
             assert hasattr(agent_pkg, name), (

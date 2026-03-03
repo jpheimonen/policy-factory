@@ -37,19 +37,32 @@ AgentRole = Literal[
     "values-seed",
 ]
 
-# Default model assignments per role
+# Default model assignments per role.
+#
+# Roles that don't need tools (MCP/WebSearch) use Gemini Flash models —
+# they're ~40x cheaper and fast enough for text-in/text-out tasks.
+# Roles that need Claude CLI tools (MCP file tools, WebSearch) must use
+# Claude models since the claude-agent-sdk wraps the Claude CLI binary.
+#
+# Model tiers:
+#   Claude Opus  — heavyweight generation (generator, heartbeat-sa-update)
+#   Claude Sonnet — mid-tier Claude tasks needing tools
+#   Gemini 2.5 Flash — cheap text-in/text-out (synthesis, ideas, values-seed)
+#   Gemini 2.5 Flash Lite — cheapest tier (classifier)
 _DEFAULT_MODELS: dict[str, str] = {
-    "generator": "claude-opus-4-0-20250514",
+    # --- Claude models (need CLI tools) ---
+    "generator": "claude-sonnet-4-20250514",
     "critic": "claude-sonnet-4-20250514",
-    "synthesis": "claude-sonnet-4-20250514",
-    "heartbeat-skim": "claude-haiku-4-20250514",
-    "heartbeat-triage": "claude-haiku-4-20250514",
-    "heartbeat-sa-update": "claude-opus-4-0-20250514",
-    "classifier": "claude-sonnet-4-20250514",
-    "idea-evaluator": "claude-sonnet-4-20250514",
-    "idea-generator": "claude-sonnet-4-20250514",
+    "heartbeat-skim": "claude-sonnet-4-20250514",
+    "heartbeat-triage": "claude-sonnet-4-20250514",
+    "heartbeat-sa-update": "claude-sonnet-4-20250514",
     "seed": "claude-sonnet-4-20250514",
-    "values-seed": "claude-sonnet-4-20250514",
+    # --- Gemini models (tool-free, cheap) ---
+    "synthesis": "gemini-2.5-flash",
+    "classifier": "gemini-2.5-flash-lite",
+    "idea-evaluator": "gemini-2.5-flash",
+    "idea-generator": "gemini-2.5-flash",
+    "values-seed": "gemini-2.5-flash",
 }
 
 # Environment variable names per role

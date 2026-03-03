@@ -1,14 +1,16 @@
 """Agent session wrapper for Policy Factory agents.
 
-Wraps the ``claude-agent-sdk`` to run agent sessions against the
-``data/`` directory.  Processes SDK message streams, emits text chunks as
-typed events through the EventEmitter, handles transient errors with retries,
-and returns a structured result.
+Supports two execution backends:
 
-The session creates a ``ClaudeSDKClient`` per run, sends the prompt via
-``query()``, iterates ``receive_response()`` to process messages, emits
-``AgentTextChunk`` events from ``AssistantMessage`` text blocks, and
-populates ``AgentResult`` from ``ResultMessage`` fields.
+1. **Claude CLI** (via ``claude-agent-sdk``) — for roles needing tools
+   (MCP file tools, WebSearch).  Wraps the ``claude`` CLI binary.
+2. **Gemini Flash** (via ``google-genai``) — for tool-free roles that
+   only need text-in / text-out.  ~40x cheaper than Claude.
+
+The backend is chosen automatically based on the model string:
+models starting with ``"gemini-"`` use the Gemini path; everything
+else uses the Claude CLI path.  Callers don't need to change — they
+always create ``AgentSession`` and call ``run()``.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from policy_factory.events import AgentTextChunk, EventEmitter
 
 from .config import AgentConfig, resolve_allowed_tools, resolve_tool_set
 from .errors import AgentError, ContextOverflowError
+from .gemini import generate as gemini_generate, is_gemini_model
 from .tools import TOOL_SET_NONE, create_tools_server
 
 logger = logging.getLogger(__name__)
@@ -272,12 +275,95 @@ class AgentSession:
                 cascade_id=self._context_id,
             ) from exc
 
+    async def _run_gemini(self, prompt: str) -> AgentResult:
+        """Execute via Gemini Flash — single-shot, no tools.
+
+        Used for tool-free roles where Gemini is significantly cheaper.
+        Emits the full response as a single ``AgentTextChunk`` event.
+
+        Args:
+            prompt: The full prompt string to send.
+
+        Returns:
+            An ``AgentResult`` with the Gemini response.
+
+        Raises:
+            AgentError: On Gemini API failures after retries.
+        """
+        model = self._config.model or "gemini-2.5-flash"
+        last_error: Exception | None = None
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                logger.info(
+                    "Agent %r using Gemini model %s (attempt %d)",
+                    self._agent_label,
+                    model,
+                    attempt,
+                )
+
+                text = await gemini_generate(
+                    prompt=prompt,
+                    model=model,
+                    system_prompt=self._config.system_prompt,
+                )
+
+                # Emit the full response as a text chunk
+                if text.strip():
+                    await self._emitter.emit(
+                        AgentTextChunk(
+                            cascade_id=self._context_id,
+                            agent_label=self._agent_label,
+                            text=text,
+                        )
+                    )
+
+                return AgentResult(
+                    is_error=False,
+                    result_text=text,
+                    total_cost_usd=None,  # Gemini cost not tracked per-call
+                    num_turns=1,
+                    full_output=text,
+                    session_id=None,
+                )
+
+            except Exception as exc:
+                last_error = exc
+                error_str = str(exc).lower()
+
+                # Don't retry auth / config errors
+                if "api key" in error_str or "not found" in error_str:
+                    raise AgentError(
+                        str(exc),
+                        agent_role=self._agent_label,
+                        cascade_id=self._context_id,
+                    ) from exc
+
+                if attempt < MAX_RETRIES:
+                    delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Agent %r Gemini error (attempt %d/%d), "
+                        "retrying in %.1fs: %s",
+                        self._agent_label,
+                        attempt,
+                        MAX_RETRIES,
+                        delay,
+                        exc,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+        raise AgentError(
+            f"Gemini agent failed after {MAX_RETRIES} attempts: {last_error}",
+            agent_role=self._agent_label,
+            cascade_id=self._context_id,
+        ) from last_error
+
     async def run(self, prompt: str) -> AgentResult:
         """Run a prompt to completion with retry logic.
 
-        Creates a ``ClaudeSDKClient`` per attempt, sends the prompt via
-        ``query()``, iterates ``receive_response()`` to process messages,
-        and returns an ``AgentResult``.
+        Automatically routes to the Gemini backend for models starting
+        with ``"gemini-"``, or the Claude CLI backend for everything else.
 
         Args:
             prompt: The full prompt string to send to the agent.
@@ -289,6 +375,11 @@ class AgentSession:
             ContextOverflowError: If the prompt exceeds the context window.
             AgentError: On non-transient failures after retries exhausted.
         """
+        # Route Gemini models to the lightweight Gemini path
+        if is_gemini_model(self._config.model):
+            return await self._run_gemini(prompt)
+
+        # Claude CLI path (original)
         options = self._build_options()
         last_error: Exception | None = None
 

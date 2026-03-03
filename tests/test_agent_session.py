@@ -953,3 +953,206 @@ class TestAgentSessionContextOverflow:
                 await session.run("test")
 
         assert call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Gemini routing tests
+# ---------------------------------------------------------------------------
+
+
+class TestGeminiRouting:
+    """Tests for automatic Gemini model routing in AgentSession.run()."""
+
+    @pytest.mark.asyncio
+    async def test_gemini_model_uses_gemini_path(self) -> None:
+        """A Gemini model should route to _run_gemini, not ClaudeSDKClient."""
+        config = AgentConfig(model="gemini-2.5-flash")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter, agent_label="Test gemini")
+
+        with patch(
+            "policy_factory.agent.session.gemini_generate",
+            new_callable=AsyncMock,
+            return_value="Gemini response text.",
+        ) as mock_gen:
+            result = await session.run("test prompt")
+
+        mock_gen.assert_awaited_once_with(
+            prompt="test prompt",
+            model="gemini-2.5-flash",
+            system_prompt=None,
+        )
+        assert result.is_error is False
+        assert result.full_output == "Gemini response text."
+        assert result.result_text == "Gemini response text."
+        assert result.num_turns == 1
+        assert result.session_id is None
+        assert result.total_cost_usd is None
+
+    @pytest.mark.asyncio
+    async def test_gemini_model_with_system_prompt(self) -> None:
+        """System prompt should be forwarded to gemini_generate."""
+        config = AgentConfig(model="gemini-2.5-flash-lite", system_prompt="You are a classifier.")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+
+        with patch(
+            "policy_factory.agent.session.gemini_generate",
+            new_callable=AsyncMock,
+            return_value="Classification result.",
+        ) as mock_gen:
+            result = await session.run("classify this")
+
+        mock_gen.assert_awaited_once_with(
+            prompt="classify this",
+            model="gemini-2.5-flash-lite",
+            system_prompt="You are a classifier.",
+        )
+        assert result.full_output == "Classification result."
+
+    @pytest.mark.asyncio
+    async def test_gemini_emits_text_chunk_event(self) -> None:
+        """Gemini path should emit an AgentTextChunk for the response."""
+        config = AgentConfig(model="gemini-2.5-flash")
+        emitter = EventEmitter()
+        received_events: list[AgentTextChunk] = []
+
+        async def handler(event: Any) -> None:
+            if isinstance(event, AgentTextChunk):
+                received_events.append(event)
+
+        emitter.subscribe(handler)
+
+        session = AgentSession(
+            config, emitter, context_id="ctx-gemini", agent_label="Gemini agent"
+        )
+
+        with patch(
+            "policy_factory.agent.session.gemini_generate",
+            new_callable=AsyncMock,
+            return_value="Some output.",
+        ):
+            await session.run("test")
+
+        assert len(received_events) == 1
+        assert received_events[0].text == "Some output."
+        assert received_events[0].cascade_id == "ctx-gemini"
+        assert received_events[0].agent_label == "Gemini agent"
+
+    @pytest.mark.asyncio
+    async def test_gemini_empty_response_no_event(self) -> None:
+        """Empty Gemini response should not emit an event."""
+        config = AgentConfig(model="gemini-2.5-flash")
+        emitter = EventEmitter()
+        received_events: list[AgentTextChunk] = []
+
+        async def handler(event: Any) -> None:
+            if isinstance(event, AgentTextChunk):
+                received_events.append(event)
+
+        emitter.subscribe(handler)
+
+        session = AgentSession(config, emitter)
+
+        with patch(
+            "policy_factory.agent.session.gemini_generate",
+            new_callable=AsyncMock,
+            return_value="",
+        ):
+            result = await session.run("test")
+
+        assert len(received_events) == 0
+        assert result.full_output == ""
+
+    @pytest.mark.asyncio
+    async def test_gemini_retries_on_transient_error(self) -> None:
+        """Gemini path should retry on transient errors."""
+        config = AgentConfig(model="gemini-2.5-flash")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+
+        call_count = 0
+
+        async def failing_then_success(prompt: str, model: str, system_prompt: str | None = None) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise RuntimeError("503 Service Unavailable")
+            return "Success after retries."
+
+        with patch(
+            "policy_factory.agent.session.gemini_generate",
+            side_effect=failing_then_success,
+        ):
+            with patch("policy_factory.agent.session.asyncio.sleep", new_callable=AsyncMock):
+                result = await session.run("test")
+
+        assert call_count == 3
+        assert result.full_output == "Success after retries."
+
+    @pytest.mark.asyncio
+    async def test_gemini_no_retry_on_api_key_error(self) -> None:
+        """API key errors should not be retried."""
+        config = AgentConfig(model="gemini-2.5-flash")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter, agent_label="Test")
+
+        with patch(
+            "policy_factory.agent.session.gemini_generate",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("No Google API key found."),
+        ):
+            with pytest.raises(AgentError, match="API key"):
+                await session.run("test")
+
+    @pytest.mark.asyncio
+    async def test_gemini_raises_after_max_retries(self) -> None:
+        """Gemini path should raise AgentError after MAX_RETRIES."""
+        config = AgentConfig(model="gemini-2.5-flash")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+
+        with patch(
+            "policy_factory.agent.session.gemini_generate",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("transient failure"),
+        ):
+            with patch("policy_factory.agent.session.asyncio.sleep", new_callable=AsyncMock):
+                with pytest.raises(AgentError, match="Gemini agent failed after"):
+                    await session.run("test")
+
+    @pytest.mark.asyncio
+    async def test_non_gemini_model_uses_claude_path(self) -> None:
+        """A Claude model should NOT use the Gemini path."""
+        config = AgentConfig(model="claude-sonnet-4-20250514")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+
+        messages = [
+            MockAssistantMessage(text_blocks=["Claude output."]),
+            MockResultMessage(is_error=False, result="Claude output."),
+        ]
+        mock_client = _make_mock_client(messages)
+
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            result = await session.run("test")
+
+        assert result.result_text == "Claude output."
+
+    @pytest.mark.asyncio
+    async def test_none_model_uses_claude_path(self) -> None:
+        """A None model should use the Claude CLI path (SDK default)."""
+        config = AgentConfig(model=None)
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+
+        messages = [
+            MockAssistantMessage(text_blocks=["Default model output."]),
+            MockResultMessage(is_error=False, result="Default model output."),
+        ]
+        mock_client = _make_mock_client(messages)
+
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            result = await session.run("test")
+
+        assert result.result_text == "Default model output."

@@ -17,49 +17,53 @@ from policy_factory.agent.tools import TOOL_SET_FULL, TOOL_SET_NONE, TOOL_SET_RE
 class TestResolveModel:
     """Tests for the resolve_model() function."""
 
-    def test_generator_defaults_to_opus(self) -> None:
+    # --- Claude model roles (need CLI tools) ---
+
+    def test_generator_defaults_to_sonnet(self) -> None:
         model = resolve_model("generator")
-        assert "opus" in model.lower()
+        assert "sonnet" in model.lower()
 
     def test_critic_defaults_to_sonnet(self) -> None:
         model = resolve_model("critic")
         assert "sonnet" in model.lower()
 
-    def test_synthesis_defaults_to_sonnet(self) -> None:
-        model = resolve_model("synthesis")
-        assert "sonnet" in model.lower()
-
-    def test_heartbeat_skim_defaults_to_haiku(self) -> None:
+    def test_heartbeat_skim_defaults_to_sonnet(self) -> None:
         model = resolve_model("heartbeat-skim")
-        assert "haiku" in model.lower()
+        assert "sonnet" in model.lower()
 
-    def test_heartbeat_triage_defaults_to_haiku(self) -> None:
+    def test_heartbeat_triage_defaults_to_sonnet(self) -> None:
         model = resolve_model("heartbeat-triage")
-        assert "haiku" in model.lower()
+        assert "sonnet" in model.lower()
 
-    def test_heartbeat_sa_update_defaults_to_opus(self) -> None:
+    def test_heartbeat_sa_update_defaults_to_sonnet(self) -> None:
         model = resolve_model("heartbeat-sa-update")
-        assert "opus" in model.lower()
-
-    def test_classifier_defaults_to_sonnet(self) -> None:
-        model = resolve_model("classifier")
-        assert "sonnet" in model.lower()
-
-    def test_idea_evaluator_defaults_to_sonnet(self) -> None:
-        model = resolve_model("idea-evaluator")
-        assert "sonnet" in model.lower()
-
-    def test_idea_generator_defaults_to_sonnet(self) -> None:
-        model = resolve_model("idea-generator")
         assert "sonnet" in model.lower()
 
     def test_seed_defaults_to_sonnet(self) -> None:
         model = resolve_model("seed")
         assert "sonnet" in model.lower()
 
-    def test_values_seed_defaults_to_sonnet(self) -> None:
+    # --- Gemini model roles (tool-free, cheap) ---
+
+    def test_synthesis_defaults_to_gemini_flash(self) -> None:
+        model = resolve_model("synthesis")
+        assert model.startswith("gemini-")
+
+    def test_classifier_defaults_to_gemini_flash_lite(self) -> None:
+        model = resolve_model("classifier")
+        assert "gemini-2.5-flash-lite" == model
+
+    def test_idea_evaluator_defaults_to_gemini_flash(self) -> None:
+        model = resolve_model("idea-evaluator")
+        assert model.startswith("gemini-")
+
+    def test_idea_generator_defaults_to_gemini_flash(self) -> None:
+        model = resolve_model("idea-generator")
+        assert model.startswith("gemini-")
+
+    def test_values_seed_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("values-seed")
-        assert "sonnet" in model.lower()
+        assert model.startswith("gemini-")
 
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):
