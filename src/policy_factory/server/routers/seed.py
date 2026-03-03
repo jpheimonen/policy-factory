@@ -28,7 +28,6 @@ from policy_factory.cascade.orchestrator import trigger_cascade
 from policy_factory.data.git import commit_changes
 from policy_factory.data.layers import delete_item, list_items, write_item
 from policy_factory.server.deps import (
-    get_anthropic_client,
     get_current_user,
     get_data_dir,
     get_event_emitter,
@@ -226,21 +225,20 @@ async def seed_values(
     data_dir = get_data_dir()
 
     # Import agent framework lazily
-    from policy_factory.agent.config import AgentConfig, resolve_model, resolve_tools
+    from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
 
-    # Resolve values-seed model and tools (should be empty list)
+    # Resolve values-seed model
     model = resolve_model("values-seed")
-    tools = resolve_tools("values-seed")
 
     # Build the values seed prompt
     prompt = build_agent_prompt("seed", "values")
 
-    # Create agent config with no tools
+    # Create agent config
     config = AgentConfig(
         model=model,
-        tools=tools,
+        role="values-seed",
     )
 
     # Record agent run
@@ -253,27 +251,12 @@ async def seed_values(
         target_layer="values",
     )
 
-    # Get shared Anthropic client
-    try:
-        client = get_anthropic_client()
-    except RuntimeError as exc:
-        store.complete_agent_run(
-            agent_run_id,
-            success=False,
-            error_message=str(exc),
-        )
-        return ValuesSeedResponse(
-            success=False,
-            message=str(exc),
-        )
-
     # Run the values seed agent
     session = AgentSession(
         config=config,
         emitter=emitter,
         context_id="values-seed",
         agent_label=agent_label,
-        client=client,
         data_dir=data_dir,
     )
 
@@ -403,7 +386,7 @@ async def trigger_seed(
             logger.warning("Failed to delete existing SA item %s", item.filename)
 
     # Import agent framework lazily
-    from policy_factory.agent.config import AgentConfig, resolve_model, resolve_tools
+    from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
 
@@ -425,9 +408,8 @@ async def trigger_seed(
         else "(no values content)"
     )
 
-    # Resolve seed model and tools
+    # Resolve seed model
     model = resolve_model("seed")
-    tools = resolve_tools("seed")
 
     # Build seed prompt
     current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -449,10 +431,10 @@ async def trigger_seed(
         )
         prompt = context_section + prompt
 
-    # Create agent config with tools
+    # Create agent config
     config = AgentConfig(
         model=model,
-        tools=tools,
+        role="seed",
     )
 
     # Record agent run
@@ -465,27 +447,12 @@ async def trigger_seed(
         target_layer="situational-awareness",
     )
 
-    # Get shared Anthropic client
-    try:
-        client = get_anthropic_client()
-    except RuntimeError as exc:
-        store.complete_agent_run(
-            agent_run_id,
-            success=False,
-            error_message=str(exc),
-        )
-        return SeedResponse(
-            success=False,
-            message=str(exc),
-        )
-
     # Run the seed agent
     session = AgentSession(
         config=config,
         emitter=emitter,
         context_id="seed",
         agent_label=agent_label,
-        client=client,
         data_dir=data_dir,
     )
 

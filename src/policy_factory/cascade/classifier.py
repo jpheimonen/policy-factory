@@ -149,7 +149,6 @@ async def classify_input(
     from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
     from policy_factory.agent.session import AgentSession
-    from policy_factory.server.deps import get_anthropic_client
 
     # Build layer summaries for the prompt
     layer_summaries = _build_layer_summaries(data_dir)
@@ -168,6 +167,7 @@ async def classify_input(
     # Create agent config
     config = AgentConfig(
         model=model,
+        role="classifier",
     )
 
     # Record agent run start
@@ -180,16 +180,12 @@ async def classify_input(
         target_layer=None,
     )
 
-    # Get shared Anthropic client
-    client = get_anthropic_client()
-
     # Create and run the session
     session = AgentSession(
         config=config,
         emitter=emitter,
         context_id=cascade_id or "",
         agent_label=agent_label,
-        client=client,
         data_dir=data_dir,
     )
 

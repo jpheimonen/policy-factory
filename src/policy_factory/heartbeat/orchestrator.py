@@ -188,7 +188,6 @@ async def _run_tier_agent(
     """
     from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.session import AgentSession
-    from policy_factory.server.deps import get_anthropic_client
 
     model = resolve_model(agent_type)
 
@@ -201,15 +200,12 @@ async def _run_tier_agent(
     )
 
     try:
-        client = get_anthropic_client()
-
-        config = AgentConfig(model=model)
+        config = AgentConfig(model=model, role=agent_type)
         session = AgentSession(
             config=config,
             emitter=emitter,
             context_id=run_id,
             agent_label=agent_label,
-            client=client,
             data_dir=data_dir,
         )
         result = await session.run(prompt)

@@ -294,11 +294,8 @@ async def run_synthesis(
         # Create agent config
         config = AgentConfig(
             model=model,
+            role="synthesis",
         )
-
-        # Get shared Anthropic client
-        from policy_factory.server.deps import get_anthropic_client
-        client = get_anthropic_client()
 
         # Create and run the session
         session = AgentSession(
@@ -306,7 +303,6 @@ async def run_synthesis(
             emitter=emitter,
             context_id=cascade_id or "",
             agent_label="Synthesis",
-            client=client,
             data_dir=data_dir,
         )
 
