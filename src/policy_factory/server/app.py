@@ -187,9 +187,13 @@ def create_app(
                 return FileResponse(str(file_path))
 
             # Fall back to index.html for SPA routing
+            # no-cache so browsers always fetch fresh HTML (assets use hashed filenames)
             index_path = static_path / "index.html"
             if hasattr(index_path, "is_file") and index_path.is_file():
-                return FileResponse(str(index_path))
+                return FileResponse(
+                    str(index_path),
+                    headers={"Cache-Control": "no-cache"},
+                )
         except (TypeError, FileNotFoundError):
             pass
 
