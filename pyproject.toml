@@ -1,0 +1,54 @@
+[project]
+name = "policy-factory"
+version = "0.1.0"
+description = "AI-powered policy analysis engine for Finland's cross-party tech policy group"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.128.0",
+    "uvicorn[standard]>=0.40.0",
+    "bcrypt>=4.0.0",
+    "pyjwt>=2.8.0",
+    "pyyaml>=6.0.0",
+    "apscheduler>=3.10.0,<4.0",
+    "claude-agent-sdk==0.1.37",
+    "google-genai>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+]
+
+[project.scripts]
+policy-factory = "policy_factory.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/policy_factory"]
+# Include built frontend assets (gitignored but needed in the wheel)
+artifacts = ["src/policy_factory/static/dist/"]
+
+[tool.hatch.build.targets.sdist]
+# Include built frontend assets in source distribution too
+artifacts = ["src/policy_factory/static/dist/"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "httpx>=0.28.0",
+    "ruff>=0.14.0",
+]
