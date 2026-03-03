@@ -28,7 +28,8 @@ from policy_factory.events import AgentTextChunk, EventEmitter
 
 from .config import AgentConfig, resolve_allowed_tools, resolve_tool_set
 from .errors import AgentError, ContextOverflowError
-from .gemini import generate as gemini_generate, is_gemini_model
+from .gemini import generate as gemini_generate
+from .gemini import is_gemini_model
 from .tools import TOOL_SET_NONE, create_tools_server
 
 logger = logging.getLogger(__name__)

@@ -1072,7 +1072,9 @@ class TestGeminiRouting:
 
         call_count = 0
 
-        async def failing_then_success(prompt: str, model: str, system_prompt: str | None = None) -> str:
+        async def failing_then_success(
+            prompt: str, model: str, system_prompt: str | None = None,
+        ) -> str:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
