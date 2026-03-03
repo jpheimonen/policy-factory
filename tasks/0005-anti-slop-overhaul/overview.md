@@ -6,7 +6,7 @@ Comprehensive overhaul to eliminate sanitized, committee-speak output across the
 
 | Step | Title | Done | Description |
 |------|-------|------|-------------|
-| [001](001.md) | Anti-slop preamble and prompt loading | [ ] | Create the anti-slop section file with bias-acknowledge-then-override pattern. Modify `build_agent_prompt()` to auto-prepend it to all prompts. Remove old meditation file. Update existing prompt loading tests. |
+| [001](001.md) | Anti-slop preamble and prompt loading | [x] | Create the anti-slop section file with bias-acknowledge-then-override pattern. Modify `build_agent_prompt()` to auto-prepend it to all prompts. Remove old meditation file. Update existing prompt loading tests. |
 | [002](002.md) | Values seed prompt redesign | [ ] | Complete rewrite of the values seed prompt to produce controversial tension-pairs instead of safe domain categories. Verify output format compatibility with existing `_parse_values_output()` and `_slugify()` parsing. |
 | [003](003.md) | SA seed and generator prompts | [ ] | Rewrite the SA seed prompt and all 5 generator prompts (values, situational-awareness, strategic, tactical, policies) to replace tech-policy framing with general policy scope and reinforce anti-slop writing standards. |
 | [004](004.md) | Critic and synthesis prompts | [ ] | Rewrite all 6 critic prompts (realist, liberal-institutionalist, nationalist-conservative, social-democratic, libertarian, green-ecological) and the synthesis prompt. Broaden from tech-specific to general policy. Add anti-slop quality criterion for critics to flag sanitized output. |
