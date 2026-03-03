@@ -12,8 +12,8 @@ Usage::
     prompt = load_prompt("generators", "values", layer_slug="values")
 
     # Loading sections
-    meditation = load_section("meditation")
-    combined = load_sections(["meditation", "other_section"])
+    anti_slop = load_section("anti-slop")
+    combined = load_sections(["anti-slop", "other_section"])
 """
 
 from policy_factory.prompts.loader import (
