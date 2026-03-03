@@ -1,8 +1,8 @@
 """File operation tools for Policy Factory agents.
 
-Provides sandboxed file tools that agents can invoke through the Anthropic
-tool use API. All paths are validated to ensure they resolve within the
-configured data directory.
+Provides sandboxed file tools served as MCP tool handlers via the
+``claude-agent-sdk``.  All paths are validated to ensure they resolve
+within the configured data directory.
 
 Tools:
 - list_files: List markdown filenames in a directory
@@ -13,12 +13,90 @@ Tools:
 
 from __future__ import annotations
 
+import contextvars
+import json
 import logging
 import os
 from pathlib import Path
 from typing import Any
 
+from claude_agent_sdk import create_sdk_mcp_server, tool
+
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Tool context (contextvars) — per-asyncio-task isolation
+# ---------------------------------------------------------------------------
+
+_tool_context_var: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
+    "tool_context"
+)
+
+
+def _default_tool_context() -> dict[str, Any]:
+    """Return a fresh default tool context dict."""
+    return {"data_dir": None}
+
+
+def _set_tool_context(data_dir: Path | None = None) -> None:
+    """Set the tool context for the current asyncio task.
+
+    Each task gets its own isolated context dict, so concurrent sessions
+    (e.g. heartbeat + cascade running simultaneously) cannot interfere.
+
+    Args:
+        data_dir: The root data directory (sandbox boundary) for file tools.
+    """
+    ctx = {"data_dir": data_dir}
+    _tool_context_var.set(ctx)
+
+
+def get_tool_context() -> dict[str, Any]:
+    """Get the tool context for the current asyncio task.
+
+    Returns:
+        The task-local tool context dict containing ``data_dir``.
+        Falls back to a default (``data_dir=None``) context if none has been set.
+    """
+    try:
+        return _tool_context_var.get()
+    except LookupError:
+        # No context set yet for this task — return a default.
+        ctx = _default_tool_context()
+        _tool_context_var.set(ctx)
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# MCP result helper
+# ---------------------------------------------------------------------------
+
+
+def make_result(
+    success: bool,
+    data: Any | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """Create a structured tool result in MCP content format.
+
+    Args:
+        success: Whether the operation succeeded.
+        data: Result data (for success cases).
+        error: Error message (for failure cases).
+
+    Returns:
+        A dict with the MCP content format::
+
+            {"content": [{"type": "text", "text": "<json-encoded result>"}]}
+    """
+    result: dict[str, Any] = {"success": success}
+    if data is not None:
+        result["data"] = data
+    if error:
+        result["error"] = error
+
+    return {"content": [{"type": "text", "text": json.dumps(result)}]}
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +164,11 @@ def validate_path(data_dir: Path, relative_path: str) -> Path:
     return resolved
 
 
+# ---------------------------------------------------------------------------
+# Tool implementations (unchanged — pure file I/O with sandbox validation)
+# ---------------------------------------------------------------------------
+
+
 def _error_result(message: str) -> dict[str, Any]:
     """Create an error result dict for tool responses."""
     return {"error": message}
@@ -94,11 +177,6 @@ def _error_result(message: str) -> dict[str, Any]:
 def _success_result(data: Any) -> dict[str, Any]:
     """Create a success result dict for tool responses."""
     return {"success": True, "data": data}
-
-
-# ---------------------------------------------------------------------------
-# Tool implementations
-# ---------------------------------------------------------------------------
 
 
 def list_files(data_dir: Path, path: str) -> dict[str, Any]:
@@ -224,130 +302,149 @@ def delete_file(data_dir: Path, path: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Tool definitions (Anthropic API format)
+# MCP tool handlers — async wrappers decorated with @tool
 # ---------------------------------------------------------------------------
 
-LIST_FILES_TOOL = {
-    "name": "list_files",
-    "description": (
-        "List markdown filenames in a directory within the data folder. "
-        "Returns a list of .md filenames, excluding README.md."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": (
-                    "Directory path relative to the data root "
-                    "(e.g., 'values', 'situational-awareness')"
-                ),
-            },
-        },
-        "required": ["path"],
-    },
-}
 
-READ_FILE_TOOL = {
-    "name": "read_file",
-    "description": (
-        "Read the content of a file within the data folder. "
-        "Returns the full file content as text."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": (
-                    "File path relative to the data root "
-                    "(e.g., 'values/national-security.md')"
-                ),
-            },
-        },
-        "required": ["path"],
-    },
-}
+@tool(
+    "list_files",
+    "List markdown filenames in a directory within the data folder. "
+    "Returns a list of .md filenames, excluding README.md.",
+    {"path": str},
+)
+async def list_files_tool(args: dict[str, Any]) -> dict[str, Any]:
+    """MCP handler for list_files."""
+    ctx = get_tool_context()
+    data_dir = ctx["data_dir"]
+    if data_dir is None:
+        return make_result(False, error="Tool context not initialised (no data_dir)")
+    try:
+        result = list_files(data_dir, args.get("path", ""))
+        if "error" in result:
+            return make_result(False, error=result["error"])
+        return make_result(True, data=result["data"])
+    except Exception as e:
+        return make_result(False, error=str(e))
 
-WRITE_FILE_TOOL = {
-    "name": "write_file",
-    "description": (
-        "Create or overwrite a file within the data folder. "
-        "Parent directories are created automatically if needed."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": (
-                    "File path relative to the data root "
-                    "(e.g., 'values/new-value.md')"
-                ),
-            },
-            "content": {
-                "type": "string",
-                "description": "The content to write to the file",
-            },
-        },
-        "required": ["path", "content"],
-    },
-}
 
-DELETE_FILE_TOOL = {
-    "name": "delete_file",
-    "description": (
-        "Delete a file within the data folder. "
-        "Succeeds silently if the file does not exist (idempotent)."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": (
-                    "File path relative to the data root "
-                    "(e.g., 'values/old-value.md')"
-                ),
-            },
-        },
-        "required": ["path"],
-    },
-}
+@tool(
+    "read_file",
+    "Read the content of a file within the data folder. "
+    "Returns the full file content as text.",
+    {"path": str},
+)
+async def read_file_tool(args: dict[str, Any]) -> dict[str, Any]:
+    """MCP handler for read_file."""
+    ctx = get_tool_context()
+    data_dir = ctx["data_dir"]
+    if data_dir is None:
+        return make_result(False, error="Tool context not initialised (no data_dir)")
+    try:
+        result = read_file(data_dir, args.get("path", ""))
+        if "error" in result:
+            return make_result(False, error=result["error"])
+        return make_result(True, data=result["data"])
+    except Exception as e:
+        return make_result(False, error=str(e))
+
+
+@tool(
+    "write_file",
+    "Create or overwrite a file within the data folder. "
+    "Parent directories are created automatically if needed.",
+    {"path": str, "content": str},
+)
+async def write_file_tool(args: dict[str, Any]) -> dict[str, Any]:
+    """MCP handler for write_file."""
+    ctx = get_tool_context()
+    data_dir = ctx["data_dir"]
+    if data_dir is None:
+        return make_result(False, error="Tool context not initialised (no data_dir)")
+    try:
+        result = write_file(data_dir, args.get("path", ""), args.get("content", ""))
+        if "error" in result:
+            return make_result(False, error=result["error"])
+        return make_result(True, data=result["data"])
+    except Exception as e:
+        return make_result(False, error=str(e))
+
+
+@tool(
+    "delete_file",
+    "Delete a file within the data folder. "
+    "Succeeds silently if the file does not exist (idempotent).",
+    {"path": str},
+)
+async def delete_file_tool(args: dict[str, Any]) -> dict[str, Any]:
+    """MCP handler for delete_file."""
+    ctx = get_tool_context()
+    data_dir = ctx["data_dir"]
+    if data_dir is None:
+        return make_result(False, error="Tool context not initialised (no data_dir)")
+    try:
+        result = delete_file(data_dir, args.get("path", ""))
+        if "error" in result:
+            return make_result(False, error=result["error"])
+        return make_result(True, data=result["data"])
+    except Exception as e:
+        return make_result(False, error=str(e))
 
 
 # ---------------------------------------------------------------------------
-# Server-side tool definitions (handled by Anthropic's API)
+# Tool set constants — MCP tool objects grouped by role needs
 # ---------------------------------------------------------------------------
 
-# Web search is a server-side tool handled automatically by Anthropic's API.
-# Results come back automatically - no client-side tool execution needed.
-WEB_SEARCH_TOOL: dict[str, Any] = {
-    "type": "web_search_20250305",
-    "name": "web_search",
-}
+#: All four file tool handlers (for generator, heartbeat-sa-update, seed roles).
+FULL_FILE_TOOLS = [list_files_tool, read_file_tool, write_file_tool, delete_file_tool]
+
+#: Read-only subset (for critic role).
+READ_ONLY_FILE_TOOLS = [list_files_tool, read_file_tool]
+
+#: Tool set identifier constants used by the server factory.
+TOOL_SET_FULL = "full"
+TOOL_SET_READ_ONLY = "read_only"
+TOOL_SET_NONE = "none"
+
 
 # ---------------------------------------------------------------------------
-# Tool sets
+# MCP server factory
 # ---------------------------------------------------------------------------
 
-# All file tools
-FILE_TOOLS = [LIST_FILES_TOOL, READ_FILE_TOOL, WRITE_FILE_TOOL, DELETE_FILE_TOOL]
 
-# Read-only subset for critic agents
-READ_ONLY_TOOLS = [LIST_FILES_TOOL, READ_FILE_TOOL]
+def create_tools_server(
+    data_dir: Path | None = None,
+    tool_set: str = TOOL_SET_FULL,
+) -> dict[str, Any]:
+    """Create an MCP server with the appropriate file tools.
 
-# File tools plus web search (for seed and heartbeat-sa-update)
-FILE_TOOLS_WITH_WEB_SEARCH = FILE_TOOLS + [WEB_SEARCH_TOOL]
+    Args:
+        data_dir: The root data directory for sandboxed file operations.
+        tool_set: Which tools to include. One of:
+            - ``"full"``  — all four file tools
+            - ``"read_only"`` — list_files and read_file only
+            - ``"none"`` — no tools (returns an empty server)
 
-# Web search only (for heartbeat-skim and heartbeat-triage)
-WEB_SEARCH_ONLY = [WEB_SEARCH_TOOL]
+    Returns:
+        A dict mapping the server name ``"policy-factory-tools"`` to the
+        ``McpSdkServerConfig``, ready for ``ClaudeAgentOptions.mcp_servers``.
 
-# Tool name to function mapping (for use by AgentSession)
-# Note: web_search is not included - it's handled server-side by Anthropic
-TOOL_FUNCTIONS = {
-    "list_files": list_files,
-    "read_file": read_file,
-    "write_file": write_file,
-    "delete_file": delete_file,
-}
+    Raises:
+        ValueError: If *tool_set* is not a recognised identifier.
+    """
+    _set_tool_context(data_dir)
+
+    if tool_set == TOOL_SET_FULL:
+        tools = list(FULL_FILE_TOOLS)
+    elif tool_set == TOOL_SET_READ_ONLY:
+        tools = list(READ_ONLY_FILE_TOOLS)
+    elif tool_set == TOOL_SET_NONE:
+        tools = []
+    else:
+        raise ValueError(f"Unknown tool set: {tool_set!r}")
+
+    server = create_sdk_mcp_server(
+        name="policy-factory-tools",
+        version="1.0.0",
+        tools=tools,
+    )
+    return {"policy-factory-tools": server}

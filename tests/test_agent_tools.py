@@ -6,31 +6,40 @@ Tests cover:
 - read_file tool behavior
 - write_file tool behavior
 - delete_file tool behavior
-- Tool definition structures
+- MCP tool definitions (@tool-decorated objects)
+- MCP tool handler wrappers
+- Tool context (contextvars isolation)
+- MCP server factory
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from policy_factory.agent.tools import (
-    DELETE_FILE_TOOL,
-    FILE_TOOLS,
-    FILE_TOOLS_WITH_WEB_SEARCH,
-    LIST_FILES_TOOL,
-    READ_FILE_TOOL,
-    READ_ONLY_TOOLS,
-    WEB_SEARCH_ONLY,
-    WEB_SEARCH_TOOL,
-    WRITE_FILE_TOOL,
+    FULL_FILE_TOOLS,
+    READ_ONLY_FILE_TOOLS,
+    TOOL_SET_FULL,
+    TOOL_SET_NONE,
+    TOOL_SET_READ_ONLY,
     SandboxViolationError,
+    _set_tool_context,
+    create_tools_server,
     delete_file,
+    delete_file_tool,
+    get_tool_context,
     list_files,
+    list_files_tool,
     read_file,
+    read_file_tool,
     validate_path,
     write_file,
+    write_file_tool,
 )
 
 # ---------------------------------------------------------------------------
@@ -271,7 +280,7 @@ class TestReadFile:
     def test_unicode_content(self, tmp_path: Path) -> None:
         """Returns unicode content correctly."""
         (tmp_path / "values").mkdir()
-        content = "Finnish: Suomi 🇫🇮\nJapanese: 日本語"
+        content = "Finnish: Suomi \U0001f1eb\U0001f1ee\nJapanese: \u65e5\u672c\u8a9e"
         (tmp_path / "values" / "unicode.md").write_text(content, encoding="utf-8")
 
         result = read_file(tmp_path, "values/unicode.md")
@@ -355,7 +364,7 @@ class TestWriteFile:
     def test_unicode_content(self, tmp_path: Path) -> None:
         """Writes unicode content correctly."""
         (tmp_path / "values").mkdir()
-        content = "Finnish: Suomi 🇫🇮\nJapanese: 日本語"
+        content = "Finnish: Suomi \U0001f1eb\U0001f1ee\nJapanese: \u65e5\u672c\u8a9e"
 
         result = write_file(tmp_path, "values/unicode.md", content)
         assert result["success"] is True
@@ -424,95 +433,269 @@ class TestDeleteFile:
 
 
 # ---------------------------------------------------------------------------
-# Tool definition tests
+# MCP tool definition tests
 # ---------------------------------------------------------------------------
 
 
 class TestToolDefinitions:
-    """Tests for tool definition structures."""
+    """Tests for @tool-decorated MCP tool objects."""
 
-    def test_file_tools_contains_all_four(self) -> None:
-        """FILE_TOOLS contains all four tools."""
-        assert len(FILE_TOOLS) == 4
-        names = {tool["name"] for tool in FILE_TOOLS}
+    def test_list_files_tool_attributes(self) -> None:
+        """list_files tool has correct name, description, and schema."""
+        assert list_files_tool.name == "list_files"
+        assert list_files_tool.description
+        assert len(list_files_tool.description) > 10
+        assert "path" in list_files_tool.input_schema
+
+    def test_read_file_tool_attributes(self) -> None:
+        """read_file tool has correct name, description, and schema."""
+        assert read_file_tool.name == "read_file"
+        assert read_file_tool.description
+        assert len(read_file_tool.description) > 10
+        assert "path" in read_file_tool.input_schema
+
+    def test_write_file_tool_attributes(self) -> None:
+        """write_file tool has correct name, description, and schema."""
+        assert write_file_tool.name == "write_file"
+        assert write_file_tool.description
+        assert len(write_file_tool.description) > 10
+        assert "path" in write_file_tool.input_schema
+        assert "content" in write_file_tool.input_schema
+
+    def test_delete_file_tool_attributes(self) -> None:
+        """delete_file tool has correct name, description, and schema."""
+        assert delete_file_tool.name == "delete_file"
+        assert delete_file_tool.description
+        assert len(delete_file_tool.description) > 10
+        assert "path" in delete_file_tool.input_schema
+
+    def test_write_file_takes_path_and_content(self) -> None:
+        """write_file requires both path and content; others require only path."""
+        assert set(write_file_tool.input_schema.keys()) == {"path", "content"}
+        assert set(list_files_tool.input_schema.keys()) == {"path"}
+        assert set(read_file_tool.input_schema.keys()) == {"path"}
+        assert set(delete_file_tool.input_schema.keys()) == {"path"}
+
+    def test_all_tools_have_handler(self) -> None:
+        """All tool objects expose a callable handler."""
+        for t in FULL_FILE_TOOLS:
+            assert callable(t.handler), f"Tool {t.name} has no callable handler"
+
+    def test_full_file_tools_contains_all_four(self) -> None:
+        """FULL_FILE_TOOLS contains all four tools."""
+        assert len(FULL_FILE_TOOLS) == 4
+        names = {t.name for t in FULL_FILE_TOOLS}
         assert names == {"list_files", "read_file", "write_file", "delete_file"}
 
     def test_read_only_tools_subset(self) -> None:
-        """READ_ONLY_TOOLS contains only list_files and read_file."""
-        assert len(READ_ONLY_TOOLS) == 2
-        names = {tool["name"] for tool in READ_ONLY_TOOLS}
+        """READ_ONLY_FILE_TOOLS contains only list_files and read_file."""
+        assert len(READ_ONLY_FILE_TOOLS) == 2
+        names = {t.name for t in READ_ONLY_FILE_TOOLS}
         assert names == {"list_files", "read_file"}
 
-    def test_file_tools_with_web_search(self) -> None:
-        """FILE_TOOLS_WITH_WEB_SEARCH contains file tools plus web search."""
-        assert len(FILE_TOOLS_WITH_WEB_SEARCH) == 5
-        names = {tool.get("name") for tool in FILE_TOOLS_WITH_WEB_SEARCH}
-        assert "list_files" in names
-        assert "read_file" in names
-        assert "write_file" in names
-        assert "delete_file" in names
-        assert "web_search" in names
 
-    def test_web_search_only(self) -> None:
-        """WEB_SEARCH_ONLY contains only web search tool."""
-        assert len(WEB_SEARCH_ONLY) == 1
-        assert WEB_SEARCH_ONLY[0]["name"] == "web_search"
+# ---------------------------------------------------------------------------
+# Tool context tests
+# ---------------------------------------------------------------------------
 
-    def test_web_search_tool_is_server_side(self) -> None:
-        """Web search tool has server-side type attribute."""
-        assert WEB_SEARCH_TOOL.get("type") == "web_search_20250305"
 
-    def test_tool_has_required_fields(self) -> None:
-        """All file tools have required schema fields."""
-        required_fields = {"name", "description", "input_schema"}
+def _parse_mcp_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Helper: parse the JSON text from an MCP content result."""
+    text = result["content"][0]["text"]
+    return json.loads(text)
 
-        for tool in FILE_TOOLS:
-            assert required_fields.issubset(tool.keys()), f"Tool {tool.get('name')} missing fields"
 
-    def test_list_files_tool_schema(self) -> None:
-        """list_files tool has correct input schema."""
-        assert LIST_FILES_TOOL["name"] == "list_files"
-        schema = LIST_FILES_TOOL["input_schema"]
-        assert schema["type"] == "object"
-        assert "path" in schema["properties"]
-        assert "path" in schema["required"]
+class TestToolContext:
+    """Tests for _set_tool_context / get_tool_context."""
 
-    def test_read_file_tool_schema(self) -> None:
-        """read_file tool has correct input schema."""
-        assert READ_FILE_TOOL["name"] == "read_file"
-        schema = READ_FILE_TOOL["input_schema"]
-        assert schema["type"] == "object"
-        assert "path" in schema["properties"]
-        assert "path" in schema["required"]
+    def test_set_and_get(self, tmp_path: Path) -> None:
+        """Setting context makes data_dir retrievable."""
+        _set_tool_context(tmp_path)
+        ctx = get_tool_context()
+        assert ctx["data_dir"] == tmp_path
 
-    def test_write_file_tool_schema(self) -> None:
-        """write_file tool has correct input schema."""
-        assert WRITE_FILE_TOOL["name"] == "write_file"
-        schema = WRITE_FILE_TOOL["input_schema"]
-        assert schema["type"] == "object"
-        assert "path" in schema["properties"]
-        assert "content" in schema["properties"]
-        assert set(schema["required"]) == {"path", "content"}
+    def test_default_context_when_not_set(self) -> None:
+        """get_tool_context returns a default with data_dir=None when unset."""
+        import contextvars
 
-    def test_delete_file_tool_schema(self) -> None:
-        """delete_file tool has correct input schema."""
-        assert DELETE_FILE_TOOL["name"] == "delete_file"
-        schema = DELETE_FILE_TOOL["input_schema"]
-        assert schema["type"] == "object"
-        assert "path" in schema["properties"]
-        assert "path" in schema["required"]
+        from policy_factory.agent.tools import _tool_context_var
 
-    def test_all_tools_have_descriptions(self) -> None:
-        """All tools have non-empty descriptions."""
-        for tool in FILE_TOOLS:
-            assert tool.get("description"), f"Tool {tool.get('name')} has no description"
-            assert len(tool["description"]) > 10, (
-                f"Tool {tool.get('name')} has too short description"
+        # Run inside a blank contextvars.Context so the ContextVar has no value
+        blank = contextvars.Context()
+
+        def _check() -> None:
+            ctx = get_tool_context()
+            assert ctx["data_dir"] is None
+
+        blank.run(_check)
+
+    def test_concurrent_task_isolation(self, tmp_path: Path) -> None:
+        """Concurrent asyncio tasks have isolated contexts."""
+
+        async def _run() -> None:
+            dir_a = tmp_path / "a"
+            dir_b = tmp_path / "b"
+            dir_a.mkdir()
+            dir_b.mkdir()
+
+            results: dict[str, Path | None] = {}
+            barrier = asyncio.Barrier(2)
+
+            async def task_a() -> None:
+                _set_tool_context(dir_a)
+                await barrier.wait()  # sync with task_b
+                ctx = get_tool_context()
+                results["a"] = ctx["data_dir"]
+
+            async def task_b() -> None:
+                _set_tool_context(dir_b)
+                await barrier.wait()  # sync with task_a
+                ctx = get_tool_context()
+                results["b"] = ctx["data_dir"]
+
+            # Run in separate tasks to get separate contextvars scopes
+            await asyncio.gather(
+                asyncio.create_task(task_a()),
+                asyncio.create_task(task_b()),
             )
 
-    def test_path_properties_have_descriptions(self) -> None:
-        """All path properties have descriptions with examples."""
-        for tool in FILE_TOOLS:
-            schema = tool["input_schema"]
-            path_prop = schema["properties"].get("path", {})
-            assert "description" in path_prop, f"Tool {tool['name']} path has no description"
+            assert results["a"] == dir_a
+            assert results["b"] == dir_b
+
+        asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# MCP tool handler tests
+# ---------------------------------------------------------------------------
+
+
+class TestMCPHandlers:
+    """Tests for the async MCP tool handler wrappers."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_context(self, tmp_path: Path) -> None:
+        """Set up a tool context with tmp_path before each test."""
+        _set_tool_context(tmp_path)
+        self.data_dir = tmp_path
+
+    @pytest.mark.asyncio
+    async def test_list_files_handler(self) -> None:
+        """list_files MCP handler returns results in MCP content format."""
+        (self.data_dir / "values").mkdir()
+        (self.data_dir / "values" / "item.md").write_text("content")
+
+        result = await list_files_tool.handler({"path": "values"})
+        parsed = _parse_mcp_result(result)
+        assert parsed["success"] is True
+        assert parsed["data"] == ["item.md"]
+
+    @pytest.mark.asyncio
+    async def test_read_file_handler(self) -> None:
+        """read_file MCP handler returns file content in MCP format."""
+        (self.data_dir / "values").mkdir()
+        (self.data_dir / "values" / "test.md").write_text("hello world")
+
+        result = await read_file_tool.handler({"path": "values/test.md"})
+        parsed = _parse_mcp_result(result)
+        assert parsed["success"] is True
+        assert parsed["data"] == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_write_file_handler(self) -> None:
+        """write_file MCP handler writes file and returns success."""
+        (self.data_dir / "values").mkdir()
+
+        result = await write_file_tool.handler(
+            {"path": "values/new.md", "content": "new content"}
+        )
+        parsed = _parse_mcp_result(result)
+        assert parsed["success"] is True
+        assert (self.data_dir / "values" / "new.md").read_text() == "new content"
+
+    @pytest.mark.asyncio
+    async def test_delete_file_handler(self) -> None:
+        """delete_file MCP handler deletes file and returns success."""
+        (self.data_dir / "values").mkdir()
+        target = self.data_dir / "values" / "bye.md"
+        target.write_text("gone")
+
+        result = await delete_file_tool.handler({"path": "values/bye.md"})
+        parsed = _parse_mcp_result(result)
+        assert parsed["success"] is True
+        assert not target.exists()
+
+    @pytest.mark.asyncio
+    async def test_sandbox_violation_returned_as_error(self) -> None:
+        """Sandbox violations are caught and returned as MCP error results."""
+        result = await read_file_tool.handler({"path": "../escape.md"})
+        parsed = _parse_mcp_result(result)
+        assert parsed["success"] is False
+        assert "escapes sandbox" in parsed["error"]
+
+    @pytest.mark.asyncio
+    async def test_io_error_returned_as_error(self) -> None:
+        """I/O errors (e.g. nonexistent file) are returned as MCP error results."""
+        result = await read_file_tool.handler({"path": "nonexistent.md"})
+        parsed = _parse_mcp_result(result)
+        assert parsed["success"] is False
+        assert "does not exist" in parsed["error"]
+
+    @pytest.mark.asyncio
+    async def test_handler_with_no_context(self) -> None:
+        """Handler returns error when tool context has no data_dir."""
+        # Explicitly clear the context so data_dir is None
+        _set_tool_context(None)
+
+        result = await list_files_tool.handler({"path": "values"})
+        parsed = _parse_mcp_result(result)
+        assert parsed["success"] is False
+        assert "data_dir" in parsed["error"].lower()
+
+        # Restore context for other tests in this class
+        _set_tool_context(self.data_dir)
+
+
+# ---------------------------------------------------------------------------
+# MCP server factory tests
+# ---------------------------------------------------------------------------
+
+
+class TestCreateToolsServer:
+    """Tests for the create_tools_server factory function."""
+
+    def test_returns_dict_with_server_name(self, tmp_path: Path) -> None:
+        """Factory returns a dict keyed by 'policy-factory-tools'."""
+        result = create_tools_server(data_dir=tmp_path, tool_set=TOOL_SET_FULL)
+        assert "policy-factory-tools" in result
+
+    def test_full_tool_set(self, tmp_path: Path) -> None:
+        """Full tool set includes all four tools."""
+        result = create_tools_server(data_dir=tmp_path, tool_set=TOOL_SET_FULL)
+        assert "policy-factory-tools" in result
+        # The server object is created successfully (type is McpSdkServerConfig)
+        server = result["policy-factory-tools"]
+        assert server is not None
+
+    def test_read_only_tool_set(self, tmp_path: Path) -> None:
+        """Read-only tool set creates server successfully."""
+        result = create_tools_server(data_dir=tmp_path, tool_set=TOOL_SET_READ_ONLY)
+        assert "policy-factory-tools" in result
+        server = result["policy-factory-tools"]
+        assert server is not None
+
+    def test_none_tool_set(self, tmp_path: Path) -> None:
+        """None tool set creates server with no tools."""
+        result = create_tools_server(data_dir=tmp_path, tool_set=TOOL_SET_NONE)
+        assert "policy-factory-tools" in result
+
+    def test_invalid_tool_set_raises(self, tmp_path: Path) -> None:
+        """Unknown tool set identifier raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown tool set"):
+            create_tools_server(data_dir=tmp_path, tool_set="invalid")
+
+    def test_sets_tool_context(self, tmp_path: Path) -> None:
+        """Factory sets the tool context with the given data_dir."""
+        create_tools_server(data_dir=tmp_path, tool_set=TOOL_SET_FULL)
+        ctx = get_tool_context()
+        assert ctx["data_dir"] == tmp_path

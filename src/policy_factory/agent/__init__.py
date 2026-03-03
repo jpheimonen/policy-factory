@@ -7,22 +7,37 @@ Public API:
 - ``AgentError`` — General agent error.
 - ``ContextOverflowError`` — Context window exceeded.
 - ``resolve_model`` — Resolve model name for an agent role.
-- ``resolve_tools`` — Resolve tool configuration for an agent role.
 - ``build_agent_prompt`` — Load an agent template with variable substitution.
 - File tools: ``list_files``, ``read_file``, ``write_file``, ``delete_file``
-- Tool definitions: ``FILE_TOOLS``, ``READ_ONLY_TOOLS``, ``TOOL_FUNCTIONS``
 - ``SandboxViolationError`` — Path validation error.
 - ``validate_path`` — Validate path within sandbox.
 """
 
-from policy_factory.agent.config import AgentConfig, resolve_model, resolve_tools
+# ---------------------------------------------------------------------------
+# Transitional guards (steps 002-003)
+#
+# config.py still imports removed Anthropic-format constants from tools.py,
+# and session.py imports from config.py + removed TOOL_FUNCTIONS.
+# These will be rewritten in steps 003-004.  Guard imports to keep the
+# package importable so tool tests can run.
+# ---------------------------------------------------------------------------
+try:
+    from policy_factory.agent.config import AgentConfig, resolve_model, resolve_tools
+except ImportError:  # pragma: no cover – transitional until step 003
+    AgentConfig = None  # type: ignore[assignment, misc]
+    resolve_model = None  # type: ignore[assignment]
+    resolve_tools = None  # type: ignore[assignment]
+
 from policy_factory.agent.errors import AgentError, ContextOverflowError
 from policy_factory.agent.prompts import build_agent_prompt
-from policy_factory.agent.session import AgentResult, AgentSession
+
+try:
+    from policy_factory.agent.session import AgentResult, AgentSession
+except ImportError:  # pragma: no cover – transitional until step 004
+    AgentResult = None  # type: ignore[assignment, misc]
+    AgentSession = None  # type: ignore[assignment, misc]
+
 from policy_factory.agent.tools import (
-    FILE_TOOLS,
-    READ_ONLY_TOOLS,
-    TOOL_FUNCTIONS,
     SandboxViolationError,
     delete_file,
     list_files,
@@ -37,10 +52,7 @@ __all__ = [
     "AgentResult",
     "AgentSession",
     "ContextOverflowError",
-    "FILE_TOOLS",
-    "READ_ONLY_TOOLS",
     "SandboxViolationError",
-    "TOOL_FUNCTIONS",
     "build_agent_prompt",
     "delete_file",
     "list_files",
