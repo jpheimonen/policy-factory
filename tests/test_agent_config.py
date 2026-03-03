@@ -3,9 +3,9 @@
 import pytest
 
 from policy_factory.agent.config import (
-    MCP_SERVER_REF,
     _DEFAULT_MODELS,
     _ENV_VAR_MAP,
+    MCP_SERVER_REF,
     AgentConfig,
     resolve_allowed_tools,
     resolve_model,

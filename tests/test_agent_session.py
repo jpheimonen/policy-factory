@@ -59,7 +59,11 @@ class MockAssistantMessage:
     work we use a dynamic metaclass trick.
     """
 
-    def __init__(self, text_blocks: list[str] | None = None, tool_blocks: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        text_blocks: list[str] | None = None,
+        tool_blocks: list[str] | None = None,
+    ) -> None:
         blocks: list[Any] = []
         for text in (text_blocks or []):
             blocks.append(_MockTextBlock(text))
@@ -541,7 +545,7 @@ class TestAgentSessionRun:
         mock_client = _make_mock_client(messages)
 
         session = AgentSession(config, emitter)
-        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client) as mock_cls:
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
             await session.run("my test prompt")
 
         # Client was used as context manager

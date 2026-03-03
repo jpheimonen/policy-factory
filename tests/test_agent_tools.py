@@ -518,8 +518,6 @@ class TestToolContext:
         """get_tool_context returns a default with data_dir=None when unset."""
         import contextvars
 
-        from policy_factory.agent.tools import _tool_context_var
-
         # Run inside a blank contextvars.Context so the ContextVar has no value
         blank = contextvars.Context()
 

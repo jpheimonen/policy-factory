@@ -16,7 +16,6 @@ from pathlib import Path
 
 import policy_factory.agent as agent_pkg
 
-
 # Root of the production source tree
 _SRC_ROOT = Path(__file__).resolve().parent.parent / "src" / "policy_factory"
 
@@ -51,7 +50,8 @@ class TestNoAnthropicImports:
                 if stripped.startswith("#"):
                     continue
                 assert "from anthropic" not in stripped, (
-                    f"{py_file.relative_to(_SRC_ROOT)}:{i} still imports from anthropic: {stripped!r}"
+                    f"{py_file.relative_to(_SRC_ROOT)}:{i}"
+                    f" still imports from anthropic: {stripped!r}"
                 )
 
 
@@ -64,7 +64,8 @@ class TestNoAnthropicAPIKeyReferences:
             content = py_file.read_text(encoding="utf-8")
             for i, line in enumerate(content.splitlines(), 1):
                 assert "ANTHROPIC_API_KEY" not in line, (
-                    f"{py_file.relative_to(_SRC_ROOT)}:{i} still references ANTHROPIC_API_KEY: {line.strip()!r}"
+                    f"{py_file.relative_to(_SRC_ROOT)}:{i}"
+                    f" still references ANTHROPIC_API_KEY: {line.strip()!r}"
                 )
 
 
@@ -77,7 +78,8 @@ class TestNoGetAnthropicClient:
             content = py_file.read_text(encoding="utf-8")
             for i, line in enumerate(content.splitlines(), 1):
                 assert "get_anthropic_client" not in line, (
-                    f"{py_file.relative_to(_SRC_ROOT)}:{i} still references get_anthropic_client: {line.strip()!r}"
+                    f"{py_file.relative_to(_SRC_ROOT)}:{i}"
+                    f" still references get_anthropic_client: {line.strip()!r}"
                 )
 
 
