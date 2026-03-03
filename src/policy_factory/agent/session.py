@@ -1,6 +1,6 @@
-"""Anthropic SDK session wrapper for Policy Factory agents.
+"""Agent session wrapper for Policy Factory agents.
 
-Wraps the official Anthropic Python SDK to run agent sessions against the
+Wraps the Anthropic Python SDK to run agent sessions against the
 ``data/`` directory. Streams API responses, emits text chunks as typed
 events through the EventEmitter, handles transient errors with retries,
 and returns a structured result.
@@ -9,7 +9,8 @@ This implements a custom streaming agentic loop that:
 - Uses ``AsyncAnthropic.messages.stream()`` for real-time token streaming
 - Handles tool_use blocks by executing file tools and feeding results back
 - Continues until the model signals end_turn without pending tool calls
-- Preserves the meditation filter for suppressing countdown content
+
+Note: This module will be fully rewritten in step 004 to use ClaudeSDKClient.
 """
 
 from __future__ import annotations
@@ -19,17 +20,13 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from policy_factory.events import AgentTextChunk, EventEmitter
 
 from .config import AgentConfig
 from .errors import AgentError, ContextOverflowError
-from .meditation_filter import MeditationFilter
 from .tools import TOOL_FUNCTIONS
-
-if TYPE_CHECKING:
-    from anthropic import AsyncAnthropic
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +47,7 @@ class AgentResult:
         result_text: The final result text from the agent.
         total_cost_usd: Reported cost (may be ``None``).
         num_turns: Number of conversation turns used.
-        full_output: Complete unfiltered output including meditation.
+        full_output: Complete output from the agent session.
     """
 
     is_error: bool = False
@@ -159,7 +156,7 @@ class AgentSession:
         emitter: EventEmitter,
         context_id: str = "",
         agent_label: str = "",
-        client: AsyncAnthropic | None = None,
+        client: Any = None,
         data_dir: Path | None = None,
     ) -> None:
         self._config = config
@@ -243,17 +240,18 @@ class AgentSession:
 
         Implements a streaming agentic loop that:
         1. Sends messages to the API with available tools
-        2. Streams text deltas through the meditation filter
+        2. Streams text deltas and emits text chunk events
         3. Handles tool_use blocks by executing tools
         4. Continues until stop_reason is "end_turn" with no tool calls
         """
-        # Lazy import to avoid startup failures if API key not configured
-        from anthropic import AsyncAnthropic
-
-        # Use provided client or create a new one
+        # Use provided client (note: module will be fully rewritten in step 004)
         client = self._client
         if client is None:
-            client = AsyncAnthropic()
+            raise AgentError(
+                "No client configured — this module is pending rewrite to use ClaudeSDKClient",
+                agent_role=self._agent_label,
+                cascade_id=self._context_id,
+            )
 
         # Build tool definitions based on config
         tools = self._config.tools if self._config.tools else []
@@ -261,7 +259,6 @@ class AgentSession:
         # Initialize conversation with user prompt
         messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
 
-        meditation_filter = MeditationFilter()
         full_output: list[str] = []
         num_turns = 0
         total_input_tokens = 0
@@ -316,16 +313,14 @@ class AgentSession:
                             current_text_block += text
                             full_output.append(text)
 
-                            # Apply meditation filter and emit if allowed
-                            should_stream = meditation_filter.process(text)
-                            if should_stream:
-                                await self._emitter.emit(
-                                    AgentTextChunk(
-                                        cascade_id=self._context_id,
-                                        agent_label=self._agent_label,
-                                        text=text,
-                                    )
+                            # Emit text chunk events
+                            await self._emitter.emit(
+                                AgentTextChunk(
+                                    cascade_id=self._context_id,
+                                    agent_label=self._agent_label,
+                                    text=text,
                                 )
+                            )
 
                         elif delta.type == "input_json_delta":
                             current_tool_input_json += delta.partial_json

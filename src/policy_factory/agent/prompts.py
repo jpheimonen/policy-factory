@@ -1,17 +1,13 @@
 """Prompt construction helper for agent sessions.
 
-Assembles complete agent prompts by combining the shared meditation
-preamble with agent-specific templates and dynamic variables.  This
-ensures every agent prompt consistently includes the meditation
-preamble without callers needing to remember to include it.
+Loads agent-specific templates with dynamic variable substitution.
+This is a thin wrapper around ``load_prompt()`` that provides a
+convenient call site for agent callers.
 """
 
 from __future__ import annotations
 
-from policy_factory.prompts import load_prompt, load_section
-
-# Separator between meditation preamble and agent template
-_SECTION_SEPARATOR = "\n\n---\n\n"
+from policy_factory.prompts import load_prompt
 
 
 def build_agent_prompt(
@@ -19,10 +15,10 @@ def build_agent_prompt(
     name: str,
     **variables: str,
 ) -> str:
-    """Assemble a complete agent prompt with meditation preamble.
+    """Assemble a complete agent prompt from a template.
 
-    Loads the meditation preamble section, then the agent-specific
-    template with variable substitution, and concatenates them.
+    Loads the agent-specific template with variable substitution and
+    returns the result directly.
 
     Args:
         category: Prompt subdirectory (e.g. ``"generators"``,
@@ -33,12 +29,9 @@ def build_agent_prompt(
             agent template.
 
     Returns:
-        The assembled prompt string: meditation + separator + template.
+        The assembled prompt string with variables substituted.
 
     Raises:
-        FileNotFoundError: If the meditation section or template file
-            does not exist.
+        FileNotFoundError: If the template file does not exist.
     """
-    meditation = load_section("meditation")
-    template = load_prompt(category, name, **variables)
-    return f"{meditation}{_SECTION_SEPARATOR}{template}"
+    return load_prompt(category, name, **variables)
