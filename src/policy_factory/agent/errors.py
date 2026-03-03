@@ -35,7 +35,16 @@ class ContextOverflowError(AgentError):
     The Claude CLI returns an ``is_error`` result with text containing
     "prompt is too long" when the context limit is hit.  This error is
     non-transient and should not be retried.
+
+    Attributes:
+        session_id: Optional SDK session identifier for diagnostics.
     """
 
-    def __init__(self, message: str) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        session_id: str | None = None,
+    ) -> None:
         super().__init__(message)
+        self.session_id = session_id

@@ -24,11 +24,7 @@ from policy_factory.agent.config import (
 from policy_factory.agent.errors import AgentError, ContextOverflowError
 from policy_factory.agent.prompts import build_agent_prompt
 
-try:
-    from policy_factory.agent.session import AgentResult, AgentSession
-except ImportError:  # pragma: no cover – transitional until step 004
-    AgentResult = None  # type: ignore[assignment, misc]
-    AgentSession = None  # type: ignore[assignment, misc]
+from policy_factory.agent.session import AgentResult, AgentSession
 
 from policy_factory.agent.tools import (
     SandboxViolationError,

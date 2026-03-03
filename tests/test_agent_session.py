@@ -1,18 +1,17 @@
-"""Tests for the AgentSession wrapper.
+"""Tests for the AgentSession wrapper (ClaudeSDKClient-based).
 
-These tests mock the Anthropic SDK to test the session wrapper's behaviour
-without making actual API calls.
+These tests mock the ``ClaudeSDKClient`` lifecycle to test the session
+wrapper's behaviour without spawning real CLI processes.
 """
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 
 from policy_factory.agent.config import AgentConfig
 from policy_factory.agent.errors import AgentError, ContextOverflowError
@@ -21,209 +20,104 @@ from policy_factory.agent.session import (
     RETRY_BASE_DELAY,
     AgentResult,
     AgentSession,
+    _is_context_overflow,
     _is_transient_error,
 )
 from policy_factory.events import AgentTextChunk, EventEmitter
 
 # ---------------------------------------------------------------------------
-# Mock helpers for Anthropic SDK streaming
+# Mock helpers for ClaudeSDKClient messages
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class MockTextBlock:
-    """Mock for anthropic text content block."""
+class _MockTextBlock:
+    """Simulates a text block inside an AssistantMessage."""
 
-    type: str = "text"
-    text: str = ""
-
-
-@dataclass
-class MockToolUseBlock:
-    """Mock for anthropic tool_use content block."""
-
-    type: str = "tool_use"
-    id: str = "tool_123"
-    name: str = ""
-    input: dict[str, Any] = field(default_factory=dict)
+    def __init__(self, text: str) -> None:
+        self.text = text
 
 
-@dataclass
-class MockTextDelta:
-    """Mock for text delta in streaming."""
+class _MockToolUseBlock:
+    """Simulates a tool_use block inside an AssistantMessage (no text attr)."""
 
-    type: str = "text_delta"
-    text: str = ""
-
-
-@dataclass
-class MockInputJsonDelta:
-    """Mock for input JSON delta in streaming."""
-
-    type: str = "input_json_delta"
-    partial_json: str = ""
+    def __init__(self, name: str) -> None:
+        self.name = name
 
 
-@dataclass
-class MockMessageDelta:
-    """Mock for message delta with stop reason."""
+class MockAssistantMessage:
+    """Simulates an ``AssistantMessage`` from the SDK.
 
-    stop_reason: str | None = None
+    The class is named so that ``type(msg).__name__ == "MockAssistantMessage"``
+    but the session code checks for ``"AssistantMessage"`` via duck-typing
+    on ``hasattr(message, "content")``.  We also give the mock class
+    the right ``__name__`` by subclassing a dynamically-created type so
+    that ``type(msg).__name__`` returns ``"AssistantMessage"``.
+
+    For simplicity we just set the ``content`` attribute and let the session
+    code use ``hasattr(message, "content")`` together with
+    ``type(message).__name__ == "AssistantMessage"``.  To make the name check
+    work we use a dynamic metaclass trick.
+    """
+
+    def __init__(self, text_blocks: list[str] | None = None, tool_blocks: list[str] | None = None) -> None:
+        blocks: list[Any] = []
+        for text in (text_blocks or []):
+            blocks.append(_MockTextBlock(text))
+        for name in (tool_blocks or []):
+            blocks.append(_MockToolUseBlock(name))
+        self.content = blocks
 
 
-@dataclass
-class MockUsage:
-    """Mock for usage statistics."""
-
-    input_tokens: int = 100
-    output_tokens: int = 50
+# Make type(msg).__name__ return "AssistantMessage" for duck-typed detection
+MockAssistantMessage.__name__ = "AssistantMessage"  # type: ignore[attr-defined]
+MockAssistantMessage.__qualname__ = "AssistantMessage"  # type: ignore[attr-defined]
 
 
-@dataclass
-class MockFinalMessage:
-    """Mock for the final message with usage stats."""
+class MockResultMessage:
+    """Simulates a ``ResultMessage`` from the SDK.
 
-    usage: MockUsage = field(default_factory=MockUsage)
-
-
-class MockStreamEvent:
-    """Generic mock stream event."""
+    The session detects this via ``hasattr(message, "is_error")``.
+    """
 
     def __init__(
         self,
-        event_type: str,
-        content_block: Any = None,
-        delta: Any = None,
-        index: int = 0,
+        is_error: bool = False,
+        result: str | None = None,
+        total_cost_usd: float | None = None,
+        num_turns: int | None = None,
+        session_id: str | None = None,
     ) -> None:
-        self.type = event_type
-        self.content_block = content_block
-        self.delta = delta
-        self.index = index
+        self.is_error = is_error
+        self.result = result
+        self.total_cost_usd = total_cost_usd
+        self.num_turns = num_turns
+        self.session_id = session_id
 
 
-def create_text_stream_events(text: str, stop_reason: str = "end_turn") -> list[MockStreamEvent]:
-    """Create stream events for a simple text response.
+async def async_messages(*messages: Any):
+    """Async generator yielding mock messages to simulate ``receive_response()``."""
+    for msg in messages:
+        yield msg
 
-    Args:
-        text: The text to stream.
-        stop_reason: The stop reason for the message.
 
-    Returns:
-        List of mock stream events simulating a text response.
+def _make_mock_client(messages: list[Any]) -> MagicMock:
+    """Create a mock ``ClaudeSDKClient`` that yields the given messages.
+
+    Returns a mock whose constructor returns an async context manager.
+    Inside that context manager, ``query()`` is a no-op and
+    ``receive_response()`` yields the given messages.
     """
-    events = [
-        MockStreamEvent("content_block_start", content_block=MockTextBlock(text="")),
-        MockStreamEvent("content_block_delta", delta=MockTextDelta(text=text)),
-        MockStreamEvent("content_block_stop"),
-        MockStreamEvent("message_delta", delta=MockMessageDelta(stop_reason=stop_reason)),
-    ]
-    return events
+    mock_client_instance = AsyncMock()
+    mock_client_instance.query = AsyncMock()
+    mock_client_instance.receive_response = MagicMock(
+        return_value=async_messages(*messages)
+    )
 
+    # Make the client work as an async context manager
+    mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+    mock_client_instance.__aexit__ = AsyncMock(return_value=None)
 
-def create_tool_use_stream_events(
-    tool_id: str,
-    tool_name: str,
-    tool_input: dict[str, Any],
-    text_before: str = "",
-    stop_reason: str = "tool_use",
-) -> list[MockStreamEvent]:
-    """Create stream events for a tool use response.
-
-    Args:
-        tool_id: The tool use block ID.
-        tool_name: Name of the tool being called.
-        tool_input: Input parameters for the tool.
-        text_before: Optional text to stream before tool use.
-        stop_reason: The stop reason for the message.
-
-    Returns:
-        List of mock stream events simulating a tool use response.
-    """
-    events = []
-
-    # Optional text block before tool use
-    if text_before:
-        events.extend([
-            MockStreamEvent("content_block_start", content_block=MockTextBlock(text="")),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text=text_before)),
-            MockStreamEvent("content_block_stop"),
-        ])
-
-    # Tool use block
-    events.extend([
-        MockStreamEvent(
-            "content_block_start",
-            content_block=MockToolUseBlock(type="tool_use", id=tool_id, name=tool_name),
-        ),
-        MockStreamEvent(
-            "content_block_delta",
-            delta=MockInputJsonDelta(partial_json=json.dumps(tool_input)),
-        ),
-        MockStreamEvent("content_block_stop"),
-        MockStreamEvent("message_delta", delta=MockMessageDelta(stop_reason=stop_reason)),
-    ])
-
-    return events
-
-
-class MockStreamContextManager:
-    """Mock async context manager for Anthropic streaming responses."""
-
-    def __init__(
-        self,
-        events: list[MockStreamEvent],
-        final_message: MockFinalMessage | None = None,
-    ) -> None:
-        self._events = events
-        self._final_message = final_message or MockFinalMessage()
-
-    async def __aenter__(self) -> MockStreamContextManager:
-        return self
-
-    async def __aexit__(self, *args: Any) -> None:
-        pass
-
-    async def __aiter__(self):
-        for event in self._events:
-            yield event
-
-    async def get_final_message(self) -> MockFinalMessage:
-        return self._final_message
-
-
-def create_mock_anthropic_client(
-    stream_responses: list[list[MockStreamEvent]] | None = None,
-    final_messages: list[MockFinalMessage] | None = None,
-) -> MagicMock:
-    """Create a mock AsyncAnthropic client.
-
-    Args:
-        stream_responses: List of event lists, one per API call.
-        final_messages: List of final messages, one per API call.
-
-    Returns:
-        Mock client with messages.stream() configured.
-    """
-    if stream_responses is None:
-        stream_responses = [create_text_stream_events("Default response")]
-
-    if final_messages is None:
-        final_messages = [MockFinalMessage() for _ in stream_responses]
-
-    call_count = 0
-
-    def make_stream(**kwargs: Any) -> MockStreamContextManager:
-        nonlocal call_count
-        events = stream_responses[min(call_count, len(stream_responses) - 1)]
-        final_msg = final_messages[min(call_count, len(final_messages) - 1)]
-        call_count += 1
-        return MockStreamContextManager(events, final_msg)
-
-    mock_client = MagicMock()
-    mock_client.messages.stream = MagicMock(side_effect=make_stream)
-
-    return mock_client
+    return mock_client_instance
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +127,14 @@ def create_mock_anthropic_client(
 
 class TestIsTransientError:
     """Tests for the transient error classification function."""
+
+    def test_cli_connection_error_is_transient(self) -> None:
+        """CLIConnectionError should be transient."""
+        assert _is_transient_error(CLIConnectionError("CLI died")) is True
+
+    def test_message_parse_error_is_not_transient(self) -> None:
+        """MessageParseError should NOT be transient."""
+        assert _is_transient_error(MessageParseError("bad message")) is False
 
     def test_500_internal_server_error_is_transient(self) -> None:
         assert _is_transient_error(Exception("500 internal server error")) is True
@@ -255,12 +157,6 @@ class TestIsTransientError:
     def test_rate_limit_message_is_transient(self) -> None:
         assert _is_transient_error(Exception("rate limit exceeded")) is True
 
-    def test_auth_failure_is_not_transient(self) -> None:
-        assert _is_transient_error(Exception("authentication failed")) is False
-
-    def test_context_overflow_is_not_transient(self) -> None:
-        assert _is_transient_error(Exception("prompt is too long")) is False
-
     def test_generic_error_is_not_transient(self) -> None:
         assert _is_transient_error(Exception("something went wrong")) is False
 
@@ -271,41 +167,37 @@ class TestIsTransientError:
         # "500" alone without "internal server error" or "api_error" is not transient
         assert _is_transient_error(Exception("error code 500")) is False
 
-    def test_rate_limit_error_type_is_transient(self) -> None:
-        """RateLimitError exception type should be transient."""
+    def test_context_overflow_is_not_transient(self) -> None:
+        """Context overflow strings are not transient (handled separately)."""
+        assert _is_transient_error(Exception("prompt is too long")) is False
 
-        class RateLimitError(Exception):
-            pass
+    def test_auth_failure_is_not_transient(self) -> None:
+        """Auth strings are not transient (handled separately in run())."""
+        assert _is_transient_error(Exception("authentication failed")) is False
 
-        assert _is_transient_error(RateLimitError("Too many requests")) is True
 
-    def test_overloaded_error_type_is_transient(self) -> None:
-        """OverloadedError exception type should be transient."""
+# ---------------------------------------------------------------------------
+# _is_context_overflow tests
+# ---------------------------------------------------------------------------
 
-        class OverloadedError(Exception):
-            pass
 
-        assert _is_transient_error(OverloadedError("Server busy")) is True
+class TestIsContextOverflow:
+    """Tests for context overflow detection."""
 
-    def test_authentication_error_type_is_not_transient(self) -> None:
-        """AuthenticationError exception type should not be transient."""
+    def test_prompt_too_long(self) -> None:
+        assert _is_context_overflow(Exception("prompt is too long")) is True
 
-        class AuthenticationError(Exception):
-            pass
+    def test_context_length_exceeded(self) -> None:
+        assert _is_context_overflow(Exception("context_length_exceeded")) is True
 
-        assert _is_transient_error(AuthenticationError("Invalid key")) is False
+    def test_maximum_context_length(self) -> None:
+        assert _is_context_overflow(Exception("maximum context length")) is True
 
-    def test_error_with_status_code_429_is_transient(self) -> None:
-        """Exception with status_code attribute 429 should be transient."""
-        exc = Exception("Rate limited")
-        exc.status_code = 429  # type: ignore[attr-defined]
-        assert _is_transient_error(exc) is True
+    def test_too_many_tokens(self) -> None:
+        assert _is_context_overflow(Exception("too many tokens")) is True
 
-    def test_error_with_status_code_500_is_transient(self) -> None:
-        """Exception with status_code attribute 500 should be transient."""
-        exc = Exception("Server error")
-        exc.status_code = 500  # type: ignore[attr-defined]
-        assert _is_transient_error(exc) is True
+    def test_generic_error_is_not_overflow(self) -> None:
+        assert _is_context_overflow(Exception("something went wrong")) is False
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +215,7 @@ class TestAgentResult:
         assert result.total_cost_usd is None
         assert result.num_turns is None
         assert result.full_output == ""
+        assert result.session_id is None
 
     def test_custom_values(self) -> None:
         result = AgentResult(
@@ -331,16 +224,18 @@ class TestAgentResult:
             total_cost_usd=0.05,
             num_turns=3,
             full_output="full output here",
+            session_id="sess-123",
         )
         assert result.is_error is True
         assert result.result_text == "error occurred"
         assert result.total_cost_usd == 0.05
         assert result.num_turns == 3
         assert result.full_output == "full output here"
+        assert result.session_id == "sess-123"
 
 
 # ---------------------------------------------------------------------------
-# AgentSession tests (with mocked Anthropic SDK)
+# AgentSession init tests
 # ---------------------------------------------------------------------------
 
 
@@ -350,15 +245,13 @@ class TestAgentSessionInit:
     def test_accepts_config_and_emitter(self) -> None:
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
         session = AgentSession(
-            config, emitter, context_id="ctx-1", agent_label="Test", client=mock_client
+            config, emitter, context_id="ctx-1", agent_label="Test"
         )
         assert session._config is config
         assert session._emitter is emitter
         assert session._context_id == "ctx-1"
         assert session._agent_label == "Test"
-        assert session._client is mock_client
 
     def test_default_context_id_and_label(self) -> None:
         config = AgentConfig()
@@ -367,77 +260,69 @@ class TestAgentSessionInit:
         assert session._context_id == ""
         assert session._agent_label == ""
 
+    def test_no_client_parameter(self) -> None:
+        """AgentSession should not accept a ``client`` parameter."""
+        import inspect
+
+        sig = inspect.signature(AgentSession.__init__)
+        param_names = list(sig.parameters.keys())
+        assert "client" not in param_names
+
+    def test_accepts_data_dir(self) -> None:
+        config = AgentConfig()
+        emitter = EventEmitter()
+        data_dir = Path("/tmp/test-data")
+        session = AgentSession(config, emitter, data_dir=data_dir)
+        assert session._data_dir == data_dir
+
+    def test_default_data_dir(self) -> None:
+        config = AgentConfig()
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        assert session._data_dir == Path.cwd() / "data"
+
+
+# ---------------------------------------------------------------------------
+# AgentSession.run() tests — mocked ClaudeSDKClient
+# ---------------------------------------------------------------------------
+
 
 class TestAgentSessionRun:
-    """Tests for AgentSession.run() with mocked Anthropic SDK."""
+    """Tests for AgentSession.run() with mocked ClaudeSDKClient."""
 
     @pytest.mark.asyncio
     async def test_single_turn_returns_agent_result(self) -> None:
-        """Simulate a successful single-turn agent run (no tool calls)."""
+        """Successful single-turn session returns a proper AgentResult."""
         config = AgentConfig()
         emitter = EventEmitter()
+        session = AgentSession(config, emitter, agent_label="Test agent")
 
-        # Create mock client with simple text response
-        events = create_text_stream_events("Analysis complete. No issues found.")
-        mock_client = create_mock_anthropic_client([events])
+        messages = [
+            MockAssistantMessage(text_blocks=["Analysis complete. No issues found."]),
+            MockResultMessage(
+                is_error=False,
+                result="Analysis complete. No issues found.",
+                total_cost_usd=0.01,
+                num_turns=1,
+                session_id="sess-abc",
+            ),
+        ]
+        mock_client = _make_mock_client(messages)
 
-        session = AgentSession(
-            config, emitter, agent_label="Test agent", client=mock_client
-        )
-        result = await session.run("test prompt")
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            result = await session.run("test prompt")
 
         assert isinstance(result, AgentResult)
         assert result.is_error is False
         assert "Analysis complete" in result.result_text
         assert "Analysis complete" in result.full_output
         assert result.num_turns == 1
+        assert result.session_id == "sess-abc"
+        assert result.total_cost_usd == 0.01
 
     @pytest.mark.asyncio
-    async def test_multi_turn_with_tool_calls(self, tmp_path: Path) -> None:
-        """Verify multi-turn conversation with tool calls works correctly."""
-        config = AgentConfig()
-        emitter = EventEmitter()
-
-        # First turn: model requests a tool
-        tool_events = create_tool_use_stream_events(
-            tool_id="tool_abc123",
-            tool_name="list_files",
-            tool_input={"path": "values"},
-            text_before="Let me check the files. ",
-            stop_reason="tool_use",
-        )
-
-        # Second turn: model responds with final answer after tool result
-        final_events = create_text_stream_events(
-            "Found 2 files in the values directory.", stop_reason="end_turn"
-        )
-
-        mock_client = create_mock_anthropic_client([tool_events, final_events])
-
-        # Create a data directory with some files
-        data_dir = tmp_path / "data"
-        values_dir = data_dir / "values"
-        values_dir.mkdir(parents=True)
-        (values_dir / "value1.md").write_text("# Value 1")
-        (values_dir / "value2.md").write_text("# Value 2")
-
-        session = AgentSession(
-            config, emitter, agent_label="Test", client=mock_client, data_dir=data_dir
-        )
-        result = await session.run("List the values files")
-
-        assert isinstance(result, AgentResult)
-        assert result.is_error is False
-        assert result.num_turns == 2
-        assert "Let me check the files" in result.full_output
-        assert "Found 2 files" in result.full_output
-
-        # Verify API was called twice (once per turn)
-        assert mock_client.messages.stream.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_run_emits_text_chunk_events(self) -> None:
-        """Verify that text chunks are emitted via EventEmitter."""
+    async def test_text_event_emission(self) -> None:
+        """Text blocks emit AgentTextChunk events with correct attributes."""
         config = AgentConfig()
         emitter = EventEmitter()
         received_events: list[AgentTextChunk] = []
@@ -448,279 +333,229 @@ class TestAgentSessionRun:
 
         emitter.subscribe(handler)
 
-        # Create response with enough text to trigger streaming
-        # The meditation filter needs 500+ chars before it starts streaming
-        long_text = "Analysis content here. " * 30  # ~720 chars
-        events = create_text_stream_events(long_text)
-        mock_client = create_mock_anthropic_client([events])
+        messages = [
+            MockAssistantMessage(text_blocks=["Here is the analysis."]),
+            MockResultMessage(is_error=False, result="Done"),
+        ]
+        mock_client = _make_mock_client(messages)
 
         session = AgentSession(
             config,
             emitter,
             context_id="cascade-1",
             agent_label="Values gen",
-            client=mock_client,
         )
-        await session.run("test prompt")
 
-        assert len(received_events) > 0
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            await session.run("test prompt")
+
+        assert len(received_events) == 1
         assert received_events[0].cascade_id == "cascade-1"
         assert received_events[0].agent_label == "Values gen"
+        assert received_events[0].text == "Here is the analysis."
 
     @pytest.mark.asyncio
-    async def test_run_captures_full_output_including_meditation(self) -> None:
-        """Full output should include all text, even meditation content."""
+    async def test_tool_use_blocks_do_not_emit_events(self) -> None:
+        """Blocks without text (e.g., tool_use) should not emit AgentTextChunk."""
         config = AgentConfig()
         emitter = EventEmitter()
-
-        # Simulate meditation countdown pattern
-        meditation_text = "10. I notice my initial assumptions. "
-        regular_text = "Now for the actual analysis."
-
-        # Create events for meditation + regular text in sequence
-        events = [
-            MockStreamEvent("content_block_start", content_block=MockTextBlock(text="")),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text=meditation_text)),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text=regular_text)),
-            MockStreamEvent("content_block_stop"),
-            MockStreamEvent("message_delta", delta=MockMessageDelta(stop_reason="end_turn")),
-        ]
-        mock_client = create_mock_anthropic_client([events])
-
-        session = AgentSession(config, emitter, client=mock_client)
-        result = await session.run("test prompt")
-
-        # Full output should contain both meditation and regular text
-        assert "10. I notice my initial assumptions" in result.full_output
-        assert "actual analysis" in result.full_output
-
-    @pytest.mark.asyncio
-    async def test_meditation_content_filtered_from_events(self) -> None:
-        """Meditation content should be filtered from emitted events."""
-        config = AgentConfig()
-        emitter = EventEmitter()
-        received_chunks: list[str] = []
+        received_events: list[AgentTextChunk] = []
 
         async def handler(event: Any) -> None:
             if isinstance(event, AgentTextChunk):
-                received_chunks.append(event.text)
+                received_events.append(event)
 
         emitter.subscribe(handler)
 
-        # Create meditation countdown pattern followed by regular text
-        # The filter looks for "10." pattern at start
-        meditation_events = [
-            MockStreamEvent("content_block_start", content_block=MockTextBlock(text="")),
-            MockStreamEvent(
-                "content_block_delta", delta=MockTextDelta(text="10. I observe ")
-            ),
-            MockStreamEvent(
-                "content_block_delta", delta=MockTextDelta(text="9. I notice ")
-            ),
-            MockStreamEvent(
-                "content_block_delta", delta=MockTextDelta(text="8. I see ")
-            ),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text="7. ")),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text="6. ")),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text="5. ")),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text="4. ")),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text="3. ")),
-            MockStreamEvent("content_block_delta", delta=MockTextDelta(text="2. ")),
-            MockStreamEvent(
-                "content_block_delta", delta=MockTextDelta(text="1.\n")
-            ),
-            # After "1." the filter should start streaming
-            MockStreamEvent(
-                "content_block_delta",
-                delta=MockTextDelta(text="Now for the actual content."),
-            ),
-            MockStreamEvent("content_block_stop"),
-            MockStreamEvent("message_delta", delta=MockMessageDelta(stop_reason="end_turn")),
+        messages = [
+            MockAssistantMessage(text_blocks=[], tool_blocks=["list_files"]),
+            MockAssistantMessage(text_blocks=["Final result."]),
+            MockResultMessage(is_error=False, result="Done"),
         ]
-        mock_client = create_mock_anthropic_client([meditation_events])
+        mock_client = _make_mock_client(messages)
 
-        session = AgentSession(config, emitter, client=mock_client)
-        result = await session.run("test")
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            await session.run("test")
 
-        # Full output contains everything
-        assert "10. I observe" in result.full_output
-        assert "actual content" in result.full_output
-
-        # Emitted chunks should NOT contain meditation numbers
-        emitted_text = "".join(received_chunks)
-        # After filtering, only post-meditation content should be in emitted chunks
-        # The meditation content (10. through 1.) should be suppressed
-        assert "10. I observe" not in emitted_text
-
-
-class TestAgentSessionToolExecution:
-    """Tests for tool execution during agent sessions."""
+        # Only one event from the text block, not from the tool use block
+        assert len(received_events) == 1
+        assert received_events[0].text == "Final result."
 
     @pytest.mark.asyncio
-    async def test_tool_results_passed_back_to_model(self, tmp_path: Path) -> None:
-        """Verify tool results are correctly formatted and passed back."""
+    async def test_empty_text_blocks_do_not_emit_events(self) -> None:
+        """Empty or whitespace-only text blocks should not emit events."""
+        config = AgentConfig()
+        emitter = EventEmitter()
+        received_events: list[AgentTextChunk] = []
+
+        async def handler(event: Any) -> None:
+            if isinstance(event, AgentTextChunk):
+                received_events.append(event)
+
+        emitter.subscribe(handler)
+
+        messages = [
+            MockAssistantMessage(text_blocks=["", "   ", "Real content."]),
+            MockResultMessage(is_error=False),
+        ]
+        mock_client = _make_mock_client(messages)
+
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            await session.run("test")
+
+        assert len(received_events) == 1
+        assert received_events[0].text == "Real content."
+
+    @pytest.mark.asyncio
+    async def test_full_output_captures_all_text(self) -> None:
+        """full_output should contain text from all AssistantMessage blocks."""
         config = AgentConfig()
         emitter = EventEmitter()
 
-        # Create data directory with a file
-        data_dir = tmp_path / "data"
-        values_dir = data_dir / "values"
-        values_dir.mkdir(parents=True)
-        (values_dir / "test.md").write_text("# Test\n\nContent here.")
+        messages = [
+            MockAssistantMessage(text_blocks=["Turn 1 text."]),
+            MockAssistantMessage(text_blocks=["Turn 2 text."]),
+            MockResultMessage(is_error=False, result="Final result"),
+        ]
+        mock_client = _make_mock_client(messages)
 
-        # First turn: model calls read_file
-        tool_events = create_tool_use_stream_events(
-            tool_id="tool_read_123",
-            tool_name="read_file",
-            tool_input={"path": "values/test.md"},
-            stop_reason="tool_use",
-        )
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            result = await session.run("test")
 
-        # Second turn: model responds after seeing tool result
-        final_events = create_text_stream_events(
-            "The file contains test content.", stop_reason="end_turn"
-        )
-
-        mock_client = create_mock_anthropic_client([tool_events, final_events])
-
-        session = AgentSession(
-            config, emitter, client=mock_client, data_dir=data_dir
-        )
-        await session.run("Read the test file")
-
-        # Verify the API was called twice (once per turn)
-        calls = mock_client.messages.stream.call_args_list
-        assert len(calls) == 2
-
-        # Check second call has tool result in messages
-        second_call_kwargs = calls[1][1]
-        messages = second_call_kwargs["messages"]
-
-        # Messages should have at least: user prompt, assistant (tool_use), user (tool_result)
-        # Note: The messages list may be mutated after the call, so we check minimum length
-        assert len(messages) >= 3
-        assert messages[0]["role"] == "user"
-        assert messages[1]["role"] == "assistant"
-        assert messages[2]["role"] == "user"
-
-        # The tool result should be in the third message (user with tool_result)
-        tool_result_content = messages[2]["content"]
-        assert len(tool_result_content) == 1
-        assert tool_result_content[0]["type"] == "tool_result"
-        assert tool_result_content[0]["tool_use_id"] == "tool_read_123"
-
-        # Verify the tool result contains the file content
-        result_data = json.loads(tool_result_content[0]["content"])
-        assert result_data["success"] is True
-        assert "Content here" in result_data["data"]
+        assert "Turn 1 text." in result.full_output
+        assert "Turn 2 text." in result.full_output
 
     @pytest.mark.asyncio
-    async def test_unknown_tool_returns_error_to_model(self) -> None:
-        """Unknown tool names should return error result to model."""
+    async def test_multi_turn_text_events(self) -> None:
+        """Multiple AssistantMessages each emit their own AgentTextChunk."""
+        config = AgentConfig()
+        emitter = EventEmitter()
+        received_events: list[AgentTextChunk] = []
+
+        async def handler(event: Any) -> None:
+            if isinstance(event, AgentTextChunk):
+                received_events.append(event)
+
+        emitter.subscribe(handler)
+
+        messages = [
+            MockAssistantMessage(text_blocks=["First turn."]),
+            MockAssistantMessage(text_blocks=["Second turn."]),
+            MockResultMessage(is_error=False),
+        ]
+        mock_client = _make_mock_client(messages)
+
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            await session.run("test")
+
+        assert len(received_events) == 2
+        assert received_events[0].text == "First turn."
+        assert received_events[1].text == "Second turn."
+
+    @pytest.mark.asyncio
+    async def test_cost_from_result_message(self) -> None:
+        """total_cost_usd should come from ResultMessage."""
         config = AgentConfig()
         emitter = EventEmitter()
 
-        # Model calls an unknown tool
-        tool_events = create_tool_use_stream_events(
-            tool_id="tool_unknown_123",
-            tool_name="unknown_tool_xyz",
-            tool_input={"foo": "bar"},
-            stop_reason="tool_use",
-        )
+        messages = [
+            MockAssistantMessage(text_blocks=["Output."]),
+            MockResultMessage(is_error=False, total_cost_usd=0.05),
+        ]
+        mock_client = _make_mock_client(messages)
 
-        # Model responds after seeing error
-        final_events = create_text_stream_events(
-            "I encountered an error with that tool.", stop_reason="end_turn"
-        )
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            result = await session.run("test")
 
-        mock_client = create_mock_anthropic_client([tool_events, final_events])
-
-        session = AgentSession(config, emitter, client=mock_client)
-        await session.run("Do something")
-
-        # Verify the tool result contained an error
-        calls = mock_client.messages.stream.call_args_list
-        second_call_kwargs = calls[1][1]
-        messages = second_call_kwargs["messages"]
-
-        tool_result_content = messages[2]["content"][0]["content"]
-        result_data = json.loads(tool_result_content)
-        assert "error" in result_data
-        assert "Unknown tool" in result_data["error"]
+        assert result.total_cost_usd == 0.05
 
     @pytest.mark.asyncio
-    async def test_write_file_tool_creates_file(self, tmp_path: Path) -> None:
-        """Verify write_file tool creates files correctly."""
+    async def test_session_id_from_result_message(self) -> None:
+        """session_id should come from ResultMessage."""
         config = AgentConfig()
         emitter = EventEmitter()
 
-        data_dir = tmp_path / "data"
-        values_dir = data_dir / "values"
-        values_dir.mkdir(parents=True)
+        messages = [
+            MockAssistantMessage(text_blocks=["Output."]),
+            MockResultMessage(is_error=False, session_id="sess-xyz-123"),
+        ]
+        mock_client = _make_mock_client(messages)
 
-        # Model calls write_file
-        tool_events = create_tool_use_stream_events(
-            tool_id="tool_write_123",
-            tool_name="write_file",
-            tool_input={
-                "path": "values/new-item.md",
-                "content": "---\ntitle: New Item\n---\n\nContent here.",
-            },
-            stop_reason="tool_use",
-        )
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            result = await session.run("test")
 
-        final_events = create_text_stream_events(
-            "File created successfully.", stop_reason="end_turn"
-        )
-
-        mock_client = create_mock_anthropic_client([tool_events, final_events])
-
-        session = AgentSession(
-            config, emitter, client=mock_client, data_dir=data_dir
-        )
-        await session.run("Create a new file")
-
-        # Verify file was created
-        created_file = values_dir / "new-item.md"
-        assert created_file.exists()
-        content = created_file.read_text()
-        assert "title: New Item" in content
+        assert result.session_id == "sess-xyz-123"
 
     @pytest.mark.asyncio
-    async def test_delete_file_tool_removes_file(self, tmp_path: Path) -> None:
-        """Verify delete_file tool removes files correctly."""
+    async def test_error_result(self) -> None:
+        """A ResultMessage with is_error=True produces an error AgentResult."""
         config = AgentConfig()
         emitter = EventEmitter()
 
-        data_dir = tmp_path / "data"
-        values_dir = data_dir / "values"
-        values_dir.mkdir(parents=True)
-        file_to_delete = values_dir / "to-delete.md"
-        file_to_delete.write_text("# To Delete")
+        messages = [
+            MockResultMessage(is_error=True, result="Something went wrong"),
+        ]
+        mock_client = _make_mock_client(messages)
 
-        assert file_to_delete.exists()
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            result = await session.run("test")
 
-        # Model calls delete_file
-        tool_events = create_tool_use_stream_events(
-            tool_id="tool_del_123",
-            tool_name="delete_file",
-            tool_input={"path": "values/to-delete.md"},
-            stop_reason="tool_use",
-        )
+        assert result.is_error is True
+        assert result.result_text == "Something went wrong"
 
-        final_events = create_text_stream_events(
-            "File deleted.", stop_reason="end_turn"
-        )
+    @pytest.mark.asyncio
+    async def test_result_text_falls_back_to_full_output(self) -> None:
+        """When ResultMessage.result is None, result_text falls back to full_output."""
+        config = AgentConfig()
+        emitter = EventEmitter()
 
-        mock_client = create_mock_anthropic_client([tool_events, final_events])
+        messages = [
+            MockAssistantMessage(text_blocks=["The actual text."]),
+            MockResultMessage(is_error=False, result=None),
+        ]
+        mock_client = _make_mock_client(messages)
 
-        session = AgentSession(
-            config, emitter, client=mock_client, data_dir=data_dir
-        )
-        await session.run("Delete the file")
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
+            result = await session.run("test")
 
-        # Verify file was deleted
-        assert not file_to_delete.exists()
+        assert result.result_text == "The actual text."
+
+    @pytest.mark.asyncio
+    async def test_sdk_client_lifecycle(self) -> None:
+        """Verify ClaudeSDKClient is used as async context manager with query()."""
+        config = AgentConfig()
+        emitter = EventEmitter()
+
+        messages = [
+            MockAssistantMessage(text_blocks=["Output."]),
+            MockResultMessage(is_error=False),
+        ]
+        mock_client = _make_mock_client(messages)
+
+        session = AgentSession(config, emitter)
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client) as mock_cls:
+            await session.run("my test prompt")
+
+        # Client was used as context manager
+        mock_client.__aenter__.assert_awaited_once()
+        mock_client.__aexit__.assert_awaited_once()
+        # query() was called with the prompt
+        mock_client.query.assert_awaited_once_with("my test prompt")
+        # receive_response() was called
+        mock_client.receive_response.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Retry tests
+# ---------------------------------------------------------------------------
 
 
 class TestAgentSessionRetry:
@@ -728,22 +563,29 @@ class TestAgentSessionRetry:
 
     @pytest.mark.asyncio
     async def test_retries_on_transient_error(self) -> None:
-        """Transient errors should trigger retries with backoff."""
+        """CLIConnectionError should trigger retries with eventual success."""
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
+        session = AgentSession(config, emitter)
 
         call_count = 0
+        success_messages = [
+            MockAssistantMessage(text_blocks=["Success."]),
+            MockResultMessage(is_error=False, result="Success on attempt 3"),
+        ]
 
-        async def mock_run_once(prompt: str) -> AgentResult:
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise Exception("503 service unavailable")
-            return AgentResult(result_text="Success on attempt 3")
+                # Simulate failure: the client context raises CLIConnectionError
+                mock = AsyncMock()
+                mock.__aenter__ = AsyncMock(side_effect=CLIConnectionError("CLI died"))
+                mock.__aexit__ = AsyncMock(return_value=None)
+                return mock
+            return _make_mock_client(success_messages)
 
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
             with patch("policy_factory.agent.session.asyncio.sleep", new_callable=AsyncMock):
                 result = await session.run("test")
 
@@ -751,42 +593,50 @@ class TestAgentSessionRetry:
         assert result.result_text == "Success on attempt 3"
 
     @pytest.mark.asyncio
-    async def test_no_retry_on_context_overflow(self) -> None:
-        """ContextOverflowError should NOT be retried."""
+    async def test_no_retry_on_context_overflow_exception(self) -> None:
+        """ContextOverflowError from exception should NOT be retried."""
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
+        session = AgentSession(config, emitter)
 
         call_count = 0
 
-        async def mock_run_once(prompt: str) -> AgentResult:
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
             nonlocal call_count
             call_count += 1
-            raise ContextOverflowError("prompt is too long")
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(
+                side_effect=Exception("prompt is too long for this model")
+            )
+            mock.__aexit__ = AsyncMock(return_value=None)
+            return mock
 
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
-            with pytest.raises(ContextOverflowError):
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
+            with pytest.raises(ContextOverflowError, match="prompt is too long"):
                 await session.run("test")
 
         assert call_count == 1  # No retries
 
     @pytest.mark.asyncio
     async def test_no_retry_on_auth_error(self) -> None:
-        """Authentication errors should NOT be retried."""
+        """Auth errors should NOT be retried."""
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
+        session = AgentSession(config, emitter)
 
         call_count = 0
 
-        async def mock_run_once(prompt: str) -> AgentResult:
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
             nonlocal call_count
             call_count += 1
-            raise Exception("authentication failed: invalid token")
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(
+                side_effect=Exception("authentication failed: invalid token")
+            )
+            mock.__aexit__ = AsyncMock(return_value=None)
+            return mock
 
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
             with pytest.raises(AgentError, match="Authentication failed"):
                 await session.run("test")
 
@@ -794,20 +644,24 @@ class TestAgentSessionRetry:
 
     @pytest.mark.asyncio
     async def test_raises_after_max_retries(self) -> None:
-        """After MAX_RETRIES attempts, the error should propagate."""
+        """After MAX_RETRIES attempts, AgentError should be raised."""
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
+        session = AgentSession(config, emitter)
 
         call_count = 0
 
-        async def mock_run_once(prompt: str) -> AgentResult:
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
             nonlocal call_count
             call_count += 1
-            raise Exception("503 service unavailable")
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(
+                side_effect=CLIConnectionError("503 service unavailable")
+            )
+            mock.__aexit__ = AsyncMock(return_value=None)
+            return mock
 
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
             with patch("policy_factory.agent.session.asyncio.sleep", new_callable=AsyncMock):
                 with pytest.raises(AgentError, match="failed after"):
                     await session.run("test")
@@ -819,22 +673,22 @@ class TestAgentSessionRetry:
         """Verify exponential backoff delays between retries."""
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
+        session = AgentSession(config, emitter)
 
         sleep_calls: list[float] = []
 
         async def mock_sleep(delay: float) -> None:
             sleep_calls.append(delay)
 
-        call_count = 0
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(
+                side_effect=CLIConnectionError("502 bad gateway")
+            )
+            mock.__aexit__ = AsyncMock(return_value=None)
+            return mock
 
-        async def mock_run_once(prompt: str) -> AgentResult:
-            nonlocal call_count
-            call_count += 1
-            raise Exception("502 bad gateway")
-
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
             with patch("policy_factory.agent.session.asyncio.sleep", side_effect=mock_sleep):
                 with pytest.raises(AgentError):
                     await session.run("test")
@@ -846,219 +700,252 @@ class TestAgentSessionRetry:
         assert sleep_calls[1] == RETRY_BASE_DELAY * 2
 
     @pytest.mark.asyncio
-    async def test_rate_limit_error_triggers_retry(self) -> None:
-        """Rate limit errors (429) should trigger retries."""
+    async def test_agent_error_includes_role_and_cascade_id(self) -> None:
+        """AgentError raised after max retries should have role and cascade_id."""
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
+        session = AgentSession(
+            config, emitter, context_id="cascade-42", agent_label="Test agent"
+        )
 
-        call_count = 0
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(
+                side_effect=CLIConnectionError("CLI died")
+            )
+            mock.__aexit__ = AsyncMock(return_value=None)
+            return mock
 
-        async def mock_run_once(prompt: str) -> AgentResult:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 2:
-                exc = Exception("Rate limit exceeded")
-                exc.status_code = 429  # type: ignore[attr-defined]
-                raise exc
-            return AgentResult(result_text="Success after rate limit")
-
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
             with patch("policy_factory.agent.session.asyncio.sleep", new_callable=AsyncMock):
-                result = await session.run("test")
+                with pytest.raises(AgentError) as exc_info:
+                    await session.run("test")
 
-        assert call_count == 2
-        assert result.result_text == "Success after rate limit"
+        assert exc_info.value.agent_role == "Test agent"
+        assert exc_info.value.cascade_id == "cascade-42"
 
-    @pytest.mark.asyncio
-    async def test_server_error_triggers_retry(self) -> None:
-        """Server errors (500, 502, 503) should trigger retries."""
-        config = AgentConfig()
-        emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
 
-        call_count = 0
-
-        async def mock_run_once(prompt: str) -> AgentResult:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 2:
-                raise Exception("500 internal server error")
-            return AgentResult(result_text="Success after server error")
-
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
-            with patch("policy_factory.agent.session.asyncio.sleep", new_callable=AsyncMock):
-                result = await session.run("test")
-
-        assert call_count == 2
-        assert result.result_text == "Success after server error"
+# ---------------------------------------------------------------------------
+# Config / _build_options tests
+# ---------------------------------------------------------------------------
 
 
 class TestAgentSessionConfig:
-    """Tests for session config handling."""
+    """Tests for _build_options() producing correct ClaudeAgentOptions."""
 
-    @pytest.mark.asyncio
-    async def test_config_model_passed_to_api(self) -> None:
-        """Verify that the model from config is passed to API call."""
-        config = AgentConfig(model="claude-opus-4-20250514")
+    def test_model_passed_to_options(self) -> None:
+        """Config model should appear in ClaudeAgentOptions."""
+        config = AgentConfig(model="claude-opus-4-0-20250514")
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert options.model == "claude-opus-4-0-20250514"
 
-        session = AgentSession(config, emitter, client=mock_client)
-        await session.run("test")
-
-        # Check the API call included the model
-        call_kwargs = mock_client.messages.stream.call_args[1]
-        assert call_kwargs["model"] == "claude-opus-4-20250514"
-
-    @pytest.mark.asyncio
-    async def test_system_prompt_passed_to_api(self) -> None:
-        """Verify that system prompt is passed to API call when configured."""
-        config = AgentConfig(system_prompt="You are a helpful assistant.")
+    def test_system_prompt_passed_to_options(self) -> None:
+        """Config system_prompt should appear in ClaudeAgentOptions."""
+        config = AgentConfig(system_prompt="Be helpful.")
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert options.system_prompt == "Be helpful."
 
-        session = AgentSession(config, emitter, client=mock_client)
-        await session.run("test")
-
-        call_kwargs = mock_client.messages.stream.call_args[1]
-        assert call_kwargs["system"] == "You are a helpful assistant."
-
-    @pytest.mark.asyncio
-    async def test_tools_passed_to_api_when_configured(self) -> None:
-        """Verify that tools are passed to API call when configured."""
-        # Create config with tools
-        from policy_factory.agent.tools import FILE_TOOLS
-
-        config = AgentConfig(tools=FILE_TOOLS)
+    def test_empty_system_prompt_default(self) -> None:
+        """When no system_prompt, options should get empty string."""
+        config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert options.system_prompt == ""
 
-        session = AgentSession(config, emitter, client=mock_client)
-        await session.run("test")
-
-        call_kwargs = mock_client.messages.stream.call_args[1]
-        assert "tools" in call_kwargs
-        assert len(call_kwargs["tools"]) > 0
-
-    @pytest.mark.asyncio
-    async def test_no_tools_when_empty_config(self) -> None:
-        """Verify that tools are not passed when config has empty tools list."""
-        config = AgentConfig(tools=[])
+    def test_permission_mode_is_bypass(self) -> None:
+        """Permission mode should be 'bypassPermissions'."""
+        config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert options.permission_mode == "bypassPermissions"
 
-        session = AgentSession(config, emitter, client=mock_client)
-        await session.run("test")
-
-        call_kwargs = mock_client.messages.stream.call_args[1]
-        assert "tools" not in call_kwargs
-
-    @pytest.mark.asyncio
-    async def test_default_model_used_when_not_configured(self) -> None:
-        """Verify default model is used when config doesn't specify one."""
-        config = AgentConfig(model=None)
+    def test_cwd_is_data_dir(self) -> None:
+        """cwd should be set to the data_dir path."""
+        config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
+        data_dir = Path("/tmp/test-data")
+        session = AgentSession(config, emitter, data_dir=data_dir)
+        options = session._build_options()
+        assert options.cwd == str(data_dir)
 
-        session = AgentSession(config, emitter, client=mock_client)
-        await session.run("test")
+    def test_allowed_tools_for_generator_role(self) -> None:
+        """Generator role should get MCP server reference."""
+        config = AgentConfig(role="generator")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert "mcp__policy-factory-tools" in options.allowed_tools
+        assert "WebSearch" not in options.allowed_tools
 
-        call_kwargs = mock_client.messages.stream.call_args[1]
-        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+    def test_allowed_tools_for_critic_role(self) -> None:
+        """Critic role should get MCP server reference (read-only tools)."""
+        config = AgentConfig(role="critic")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert "mcp__policy-factory-tools" in options.allowed_tools
+        assert "WebSearch" not in options.allowed_tools
+
+    def test_allowed_tools_for_heartbeat_skim(self) -> None:
+        """heartbeat-skim should get WebSearch only."""
+        config = AgentConfig(role="heartbeat-skim")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert "WebSearch" in options.allowed_tools
+        assert "mcp__policy-factory-tools" not in options.allowed_tools
+
+    def test_allowed_tools_for_seed_role(self) -> None:
+        """Seed role should get both MCP server reference and WebSearch."""
+        config = AgentConfig(role="seed")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert "mcp__policy-factory-tools" in options.allowed_tools
+        assert "WebSearch" in options.allowed_tools
+
+    def test_empty_allowed_tools_for_synthesis(self) -> None:
+        """Synthesis role (no tools) should get empty allowed_tools."""
+        config = AgentConfig(role="synthesis")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert options.allowed_tools == []
+
+    def test_empty_allowed_tools_for_no_role(self) -> None:
+        """No role should get empty allowed_tools."""
+        config = AgentConfig()
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert options.allowed_tools == []
+
+    def test_mcp_server_created_for_generator(self) -> None:
+        """Generator role should have MCP server in options."""
+        config = AgentConfig(role="generator")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert "policy-factory-tools" in options.mcp_servers
+
+    def test_mcp_server_created_for_critic(self) -> None:
+        """Critic role (read-only) should have MCP server in options."""
+        config = AgentConfig(role="critic")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert "policy-factory-tools" in options.mcp_servers
+
+    def test_no_mcp_server_for_synthesis(self) -> None:
+        """Synthesis role should have no MCP server."""
+        config = AgentConfig(role="synthesis")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert options.mcp_servers == {}
+
+    def test_no_mcp_server_for_no_role(self) -> None:
+        """No role should have no MCP server."""
+        config = AgentConfig()
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert options.mcp_servers == {}
+
+
+# ---------------------------------------------------------------------------
+# Context overflow tests
+# ---------------------------------------------------------------------------
 
 
 class TestAgentSessionContextOverflow:
     """Tests for context overflow error handling."""
 
     @pytest.mark.asyncio
-    async def test_context_overflow_raises_error(self) -> None:
-        """Context overflow should raise ContextOverflowError."""
+    async def test_context_overflow_from_result_message(self) -> None:
+        """Context overflow in ResultMessage error text should raise ContextOverflowError."""
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
+        session = AgentSession(config, emitter)
 
-        async def mock_run_once(prompt: str) -> AgentResult:
-            raise Exception("context_length_exceeded: prompt too long")
+        messages = [
+            MockResultMessage(
+                is_error=True,
+                result="Error: prompt is too long for this model",
+                session_id="sess-overflow",
+            ),
+        ]
+        mock_client = _make_mock_client(messages)
 
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
-            with pytest.raises(ContextOverflowError, match="context_length_exceeded"):
-                await session.run("test")
-
-    @pytest.mark.asyncio
-    async def test_prompt_too_long_raises_context_overflow(self) -> None:
-        """'prompt is too long' error should raise ContextOverflowError."""
-        config = AgentConfig()
-        emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
-
-        async def mock_run_once(prompt: str) -> AgentResult:
-            raise Exception("Error: prompt is too long for model")
-
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
+        with patch("policy_factory.agent.session.ClaudeSDKClient", return_value=mock_client):
             with pytest.raises(ContextOverflowError, match="prompt is too long"):
                 await session.run("test")
 
     @pytest.mark.asyncio
-    async def test_too_many_tokens_raises_context_overflow(self) -> None:
-        """'too many tokens' error should raise ContextOverflowError."""
+    async def test_context_overflow_from_exception(self) -> None:
+        """Exception with 'context_length_exceeded' should raise ContextOverflowError."""
         config = AgentConfig()
         emitter = EventEmitter()
-        mock_client = create_mock_anthropic_client()
-        session = AgentSession(config, emitter, client=mock_client)
+        session = AgentSession(config, emitter)
 
-        async def mock_run_once(prompt: str) -> AgentResult:
-            raise Exception("Request has too many tokens")
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(
+                side_effect=Exception("context_length_exceeded: too many tokens")
+            )
+            mock.__aexit__ = AsyncMock(return_value=None)
+            return mock
 
-        with patch.object(session, "_run_once", side_effect=mock_run_once):
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
+            with pytest.raises(ContextOverflowError, match="context_length_exceeded"):
+                await session.run("test")
+
+    @pytest.mark.asyncio
+    async def test_too_many_tokens_raises_overflow(self) -> None:
+        """Exception with 'too many tokens' should raise ContextOverflowError."""
+        config = AgentConfig()
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(
+                side_effect=Exception("Request has too many tokens")
+            )
+            mock.__aexit__ = AsyncMock(return_value=None)
+            return mock
+
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
             with pytest.raises(ContextOverflowError, match="too many tokens"):
                 await session.run("test")
 
-
-class TestAgentSessionEndTurn:
-    """Tests for conversation termination on end_turn."""
-
     @pytest.mark.asyncio
-    async def test_terminates_on_end_turn_without_tool_calls(self) -> None:
-        """Conversation should terminate when model signals end_turn without tool calls."""
+    async def test_context_overflow_not_retried(self) -> None:
+        """ContextOverflowError should NOT be retried (single attempt only)."""
         config = AgentConfig()
         emitter = EventEmitter()
+        session = AgentSession(config, emitter)
 
-        events = create_text_stream_events(
-            "Final response.", stop_reason="end_turn"
-        )
-        mock_client = create_mock_anthropic_client([events])
+        call_count = 0
 
-        session = AgentSession(config, emitter, client=mock_client)
-        result = await session.run("test")
+        def mock_client_factory(*args: Any, **kwargs: Any) -> MagicMock:
+            nonlocal call_count
+            call_count += 1
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(
+                side_effect=Exception("prompt is too long")
+            )
+            mock.__aexit__ = AsyncMock(return_value=None)
+            return mock
 
-        # Should only make one API call
-        assert mock_client.messages.stream.call_count == 1
-        assert result.num_turns == 1
+        with patch("policy_factory.agent.session.ClaudeSDKClient", side_effect=mock_client_factory):
+            with pytest.raises(ContextOverflowError):
+                await session.run("test")
 
-    @pytest.mark.asyncio
-    async def test_terminates_on_end_turn_even_with_tool_calls(self) -> None:
-        """If stop_reason is end_turn, should terminate even if there were tool calls."""
-        config = AgentConfig()
-        emitter = EventEmitter()
-
-        # This simulates a case where the model made a tool call but also signals end_turn
-        # In practice this shouldn't happen, but the code should handle it gracefully
-        tool_events = create_tool_use_stream_events(
-            tool_id="tool_123",
-            tool_name="list_files",
-            tool_input={"path": "values"},
-            stop_reason="end_turn",  # end_turn despite tool call
-        )
-        mock_client = create_mock_anthropic_client([tool_events])
-
-        session = AgentSession(config, emitter, client=mock_client)
-        result = await session.run("test")
-
-        # Should terminate after first turn due to end_turn stop reason
-        assert mock_client.messages.stream.call_count == 1
-        assert result.num_turns == 1
+        assert call_count == 1
