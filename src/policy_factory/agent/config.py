@@ -159,6 +159,34 @@ _TOOL_SET_BY_ROLE: dict[str, str] = {
 }
 
 
+
+
+# ---------------------------------------------------------------------------
+# Per-role Google Search grounding flag
+# ---------------------------------------------------------------------------
+
+_USE_SEARCH_BY_ROLE: dict[str, bool] = {
+    "generator": False,
+    "critic": False,
+    "synthesis": False,
+    "classifier": False,
+    "heartbeat-skim": True,
+    "heartbeat-triage": True,
+    "heartbeat-sa-update": False,
+    "seed": False,
+    "values-seed": False,
+    "idea-evaluator": False,
+    "idea-generator": False,
+}
+
+
+def resolve_use_search(role: str) -> bool:
+    """Resolve whether a role needs Google Search grounding."""
+    if role not in _USE_SEARCH_BY_ROLE:
+        valid = ", ".join(sorted(_USE_SEARCH_BY_ROLE))
+        raise ValueError(f"Unknown agent role: {role!r}. Valid roles: {valid}")
+    return _USE_SEARCH_BY_ROLE[role]
+
 def resolve_allowed_tools(role: str) -> list[str]:
     """Resolve the ``allowed_tools`` list for a ``ClaudeAgentOptions``.
 
