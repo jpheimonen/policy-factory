@@ -345,6 +345,7 @@ async def get_cascade_detail(
                 "success": r.success,
                 "error_message": r.error_message,
                 "cost_usd": r.cost_usd,
+                "output_text": r.output_text,
             }
             for r in agent_runs
         ],

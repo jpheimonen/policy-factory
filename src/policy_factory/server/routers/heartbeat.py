@@ -193,6 +193,47 @@ async def get_heartbeat_status(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/heartbeat/agent-run/{agent_run_id} — fetch a single agent run
+# ---------------------------------------------------------------------------
+
+
+@router.get("/agent-run/{agent_run_id}")
+async def get_agent_run(
+    agent_run_id: str,
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(get_store)],
+) -> dict[str, Any]:
+    """Fetch the full agent run record including output text.
+
+    Enables the heartbeat log viewer UI to load agent transcripts
+    on demand when a user expands a tier entry.
+    """
+    agent_run = store.get_agent_run(agent_run_id)
+    if agent_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent run not found: {agent_run_id}",
+        )
+
+    return {
+        "id": agent_run.id,
+        "cascade_id": agent_run.cascade_id,
+        "agent_type": agent_run.agent_type,
+        "agent_label": agent_run.agent_label,
+        "model": agent_run.model,
+        "target_layer": agent_run.target_layer,
+        "started_at": agent_run.started_at.isoformat(),
+        "completed_at": (
+            agent_run.completed_at.isoformat() if agent_run.completed_at else None
+        ),
+        "success": agent_run.success,
+        "error_message": agent_run.error_message,
+        "cost_usd": agent_run.cost_usd,
+        "output_text": agent_run.output_text,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

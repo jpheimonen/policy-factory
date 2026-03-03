@@ -201,6 +201,151 @@ class TestHeartbeatStatus:
         assert response.status_code == 401
 
 
+class TestHeartbeatAgentRun:
+    """Tests for GET /api/heartbeat/agent-run/{agent_run_id}."""
+
+    def test_returns_full_agent_run_with_output_text(
+        self, client: TestClient, auth_headers: dict, store: PolicyStore
+    ) -> None:
+        """Returns 200 with the full agent run record including output_text."""
+        run_id = store.create_agent_run(
+            None, "heartbeat-skim", "Heartbeat skim", "gemini-2.5-flash", None
+        )
+        store.complete_agent_run(
+            run_id,
+            success=True,
+            output_text="Full skim agent output transcript here.",
+        )
+
+        response = client.get(
+            f"/api/heartbeat/agent-run/{run_id}", headers=auth_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == run_id
+        assert data["output_text"] == "Full skim agent output transcript here."
+
+    def test_output_text_null_when_not_stored(
+        self, client: TestClient, auth_headers: dict, store: PolicyStore
+    ) -> None:
+        """Returns output_text as null when the agent run has no output stored."""
+        run_id = store.create_agent_run(
+            None, "heartbeat-skim", "Heartbeat skim", "gemini-2.5-flash", None
+        )
+
+        response = client.get(
+            f"/api/heartbeat/agent-run/{run_id}", headers=auth_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["output_text"] is None
+
+    def test_returns_404_for_nonexistent_agent_run(
+        self, client: TestClient, auth_headers: dict
+    ) -> None:
+        """Returns 404 when the agent run ID does not exist."""
+        response = client.get(
+            "/api/heartbeat/agent-run/nonexistent-id", headers=auth_headers
+        )
+        assert response.status_code == 404
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        """Returns 401 without authentication."""
+        response = client.get("/api/heartbeat/agent-run/some-id")
+        assert response.status_code == 401
+
+    def test_response_includes_all_fields(
+        self, client: TestClient, auth_headers: dict, store: PolicyStore
+    ) -> None:
+        """The response includes all AgentRun fields with correct values."""
+        cascade_id = store.create_cascade("user_input", "values")
+        run_id = store.create_agent_run(
+            cascade_id,
+            "heartbeat-triage",
+            "Heartbeat triage",
+            "gemini-2.5-flash",
+            "situational-awareness",
+        )
+        store.complete_agent_run(
+            run_id,
+            success=True,
+            cost=0.003,
+            output_text="Triage output content.",
+        )
+
+        response = client.get(
+            f"/api/heartbeat/agent-run/{run_id}", headers=auth_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify all expected fields are present
+        expected_fields = {
+            "id",
+            "cascade_id",
+            "agent_type",
+            "agent_label",
+            "model",
+            "target_layer",
+            "started_at",
+            "completed_at",
+            "success",
+            "error_message",
+            "cost_usd",
+            "output_text",
+        }
+        assert set(data.keys()) == expected_fields
+
+        # Verify field values
+        assert data["id"] == run_id
+        assert data["cascade_id"] == cascade_id
+        assert data["agent_type"] == "heartbeat-triage"
+        assert data["agent_label"] == "Heartbeat triage"
+        assert data["model"] == "gemini-2.5-flash"
+        assert data["target_layer"] == "situational-awareness"
+        assert data["started_at"] is not None  # ISO format string
+        assert data["completed_at"] is not None  # ISO format string
+        assert data["success"] is True
+        assert data["error_message"] is None
+        assert data["cost_usd"] == pytest.approx(0.003)
+        assert data["output_text"] == "Triage output content."
+
+    def test_datetime_fields_are_iso_format(
+        self, client: TestClient, auth_headers: dict, store: PolicyStore
+    ) -> None:
+        """Datetime fields are serialized as ISO format strings."""
+        run_id = store.create_agent_run(
+            None, "heartbeat-skim", "Heartbeat skim", "gemini-2.5-flash", None
+        )
+        store.complete_agent_run(run_id, success=True)
+
+        response = client.get(
+            f"/api/heartbeat/agent-run/{run_id}", headers=auth_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify ISO format by checking they're parseable strings with 'T' separator
+        assert isinstance(data["started_at"], str)
+        assert "T" in data["started_at"]
+        assert isinstance(data["completed_at"], str)
+        assert "T" in data["completed_at"]
+
+    def test_cascade_id_can_be_null(
+        self, client: TestClient, auth_headers: dict, store: PolicyStore
+    ) -> None:
+        """cascade_id is null for agent runs from heartbeat (not cascade)."""
+        run_id = store.create_agent_run(
+            None, "heartbeat-skim", "Heartbeat skim", "gemini-2.5-flash", None
+        )
+
+        response = client.get(
+            f"/api/heartbeat/agent-run/{run_id}", headers=auth_headers
+        )
+        assert response.status_code == 200
+        assert response.json()["cascade_id"] is None
+
+
 class TestHeartbeatTrigger:
     """Tests for POST /api/heartbeat/trigger."""
 
