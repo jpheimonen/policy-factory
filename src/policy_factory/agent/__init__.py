@@ -7,27 +7,20 @@ Public API:
 - ``AgentError`` — General agent error.
 - ``ContextOverflowError`` — Context window exceeded.
 - ``resolve_model`` — Resolve model name for an agent role.
+- ``resolve_allowed_tools`` — Resolve allowed_tools list for a role.
+- ``resolve_tool_set`` — Resolve MCP tool set identifier for a role.
 - ``build_agent_prompt`` — Load an agent template with variable substitution.
 - File tools: ``list_files``, ``read_file``, ``write_file``, ``delete_file``
 - ``SandboxViolationError`` — Path validation error.
 - ``validate_path`` — Validate path within sandbox.
 """
 
-# ---------------------------------------------------------------------------
-# Transitional guards (steps 002-003)
-#
-# config.py still imports removed Anthropic-format constants from tools.py,
-# and session.py imports from config.py + removed TOOL_FUNCTIONS.
-# These will be rewritten in steps 003-004.  Guard imports to keep the
-# package importable so tool tests can run.
-# ---------------------------------------------------------------------------
-try:
-    from policy_factory.agent.config import AgentConfig, resolve_model, resolve_tools
-except ImportError:  # pragma: no cover – transitional until step 003
-    AgentConfig = None  # type: ignore[assignment, misc]
-    resolve_model = None  # type: ignore[assignment]
-    resolve_tools = None  # type: ignore[assignment]
-
+from policy_factory.agent.config import (
+    AgentConfig,
+    resolve_allowed_tools,
+    resolve_model,
+    resolve_tool_set,
+)
 from policy_factory.agent.errors import AgentError, ContextOverflowError
 from policy_factory.agent.prompts import build_agent_prompt
 
@@ -57,8 +50,9 @@ __all__ = [
     "delete_file",
     "list_files",
     "read_file",
+    "resolve_allowed_tools",
     "resolve_model",
-    "resolve_tools",
+    "resolve_tool_set",
     "validate_path",
     "write_file",
 ]
