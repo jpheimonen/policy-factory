@@ -212,6 +212,7 @@ export function Navigation() {
         <NavLink to="/ideas">{t("nav.ideas")}</NavLink>
         <NavLink to="/cascade">{t("nav.cascade")}</NavLink>
         <NavLink to="/activity">{t("nav.activity")}</NavLink>
+        <NavLink to="/heartbeat">{t("nav.heartbeat")}</NavLink>
         {isAdmin && <NavLink to="/admin">{t("nav.admin")}</NavLink>}
       </NavLinks>
 

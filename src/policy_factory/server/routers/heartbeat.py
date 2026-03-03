@@ -109,13 +109,16 @@ async def get_heartbeat_history(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
     store: Annotated[PolicyStore, Depends(get_store)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[dict[str, Any]]:
     """Get recent heartbeat run history.
 
     Returns heartbeat runs in reverse chronological order with
     all fields including the full structured log.
+
+    Supports pagination via ``offset`` and ``limit`` query parameters.
     """
-    runs = store.list_heartbeat_runs(limit=limit)
+    runs = store.list_heartbeat_runs(limit=limit, offset=offset)
     return [_heartbeat_run_to_dict(run) for run in runs]
 
 

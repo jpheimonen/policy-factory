@@ -14,6 +14,7 @@
  *   /cascade — CascadePage (protected)
  *   /activity — ActivityPage (protected)
  *   /history/:slug — HistoryPage (protected)
+ *   /heartbeat — HeartbeatLogPage (protected)
  *   /admin — AdminPage (protected)
  *   * — catch-all redirects to /
  *
@@ -43,6 +44,7 @@ import { CascadePage } from "@/pages/CascadePage.tsx";
 import { ActivityPage } from "@/pages/ActivityPage.tsx";
 import { HistoryPage } from "@/pages/HistoryPage.tsx";
 import { AdminPage } from "@/pages/AdminPage.tsx";
+import { HeartbeatLogPage } from "@/pages/HeartbeatLogPage.tsx";
 
 /** Loading spinner shown during auth initialization. */
 function InitializingScreen() {
@@ -96,6 +98,7 @@ function AppContent() {
               <Route path="/cascade" element={<CascadePage />} />
               <Route path="/activity" element={<ActivityPage />} />
               <Route path="/history/:slug" element={<HistoryPage />} />
+              <Route path="/heartbeat" element={<HeartbeatLogPage />} />
               <Route path="/admin" element={<AdminPage />} />
             </Route>
           </Route>

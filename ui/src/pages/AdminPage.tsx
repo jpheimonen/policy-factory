@@ -525,6 +525,13 @@ export function AdminPage() {
                           ? t("admin.triggerHeartbeatRunning")
                           : t("admin.triggerHeartbeatButton")}
                       </Button>
+                      <Button
+                        $variant="ghost"
+                        $size="sm"
+                        onClick={() => navigate("/heartbeat")}
+                      >
+                        {t("admin.viewHeartbeatLog")}
+                      </Button>
                     </StatusActions>
                   </>
                 ) : (
