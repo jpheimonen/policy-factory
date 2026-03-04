@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
 from policy_factory.data.git import commit_changes
-from policy_factory.data.layers import LAYERS, list_items, read_item, read_narrative
+from policy_factory.data.layers import LAYERS
 from policy_factory.events import (
     CascadeLockAcquired,
     CascadeLockReleased,
@@ -164,7 +164,9 @@ def _gather_generation_context(
     """Gather context for the generation agent.
 
     Collects content from layers below the current layer and any
-    user-provided context.
+    user-provided context.  Delegates the layer content gathering to
+    :func:`~policy_factory.cascade.content.gather_context_below` and
+    appends user context when provided.
 
     Args:
         data_dir: Root data directory.
@@ -174,36 +176,14 @@ def _gather_generation_context(
     Returns:
         A formatted context string for the generation prompt.
     """
+    from .content import gather_context_below
+
     parts: list[str] = []
 
-    # Content from layers below
-    below = layers_below(layer_slug)
-    for below_slug in below:
-        narrative = read_narrative(data_dir, below_slug)
-        items = list_items(data_dir, below_slug)
+    below_content = gather_context_below(data_dir, layer_slug)
+    if below_content:
+        parts.append(below_content)
 
-        layer_display = below_slug.replace("-", " ").title()
-        parts.append(f"## {layer_display} Layer\n")
-
-        if narrative:
-            parts.append(f"### Narrative Summary\n{narrative}\n")
-
-        if items:
-            parts.append("### Items\n")
-            for item_summary in items:
-                try:
-                    fm, body = read_item(data_dir, below_slug, item_summary.filename)
-                    title = fm.get("title", item_summary.filename)
-                    parts.append(f"#### {title}\n{body}\n")
-                except Exception:
-                    logger.warning(
-                        "Failed to read item %s/%s for context",
-                        below_slug,
-                        item_summary.filename,
-                    )
-                    continue
-
-    # User input context
     if user_context:
         parts.append(f"## User Input\n{user_context}\n")
 
