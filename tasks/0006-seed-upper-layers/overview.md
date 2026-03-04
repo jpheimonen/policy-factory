@@ -6,7 +6,7 @@ Add seed agents for the three upper policy layers — Strategic Objectives, Tact
 
 | Step | Title | Done | Description |
 |------|-------|------|-------------|
-| [001](001.md) | Agent config and store changes | [ ] | Add 3 new seed roles to all 6 config dictionaries and AgentType literal. Change existing Claude SDK roles to use model=None. Update agent run store to accept nullable model. |
+| [001](001.md) | Agent config and store changes | [x] | Add 3 new seed roles to all 6 config dictionaries and AgentType literal. Change existing Claude SDK roles to use model=None. Update agent run store to accept nullable model. |
 | [002](002.md) | Extract shared context gathering | [ ] | Make the orchestrator's context gathering and layers_below functions accessible to the seed router. Add prerequisite validation helper. Tests for context gathering and prerequisite logic. |
 | [003](003.md) | Seed status API refactor | [ ] | Change GET /api/seed/status from hardcoded field pairs to a list-based response covering all 5 layers. Update existing tests for the new response shape. |
 | [004](004.md) | Seed prompt templates | [ ] | Create strategic.md, tactical.md, and policies.md in the seed prompts directory. Each receives layers-below content as template variables and instructs the agent to write items via file tools. |
