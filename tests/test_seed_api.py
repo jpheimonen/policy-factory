@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import policy_factory.auth as auth_mod
 from policy_factory.agent.session import AgentResult
 from policy_factory.auth import create_access_token, hash_password
-from policy_factory.data.layers import LAYER_SLUGS, LAYERS
+from policy_factory.data.layers import LAYER_SLUGS, LAYERS, list_items
 from policy_factory.events import EventEmitter
 from policy_factory.server.app import create_app
 from policy_factory.store import PolicyStore
@@ -377,3 +377,317 @@ class TestTriggerSeed:
             resp = client.post("/api/seed/", headers=auth_headers)
         # The endpoint should NOT return 409 anymore
         assert resp.status_code != 409, "Endpoint should allow re-seeding"
+
+
+# ---------------------------------------------------------------------------
+# Upper-layer seed endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def _populate_layer(data_dir: Path, slug: str, count: int = 1) -> None:
+    """Write minimal markdown items to a layer directory."""
+    layer_dir = data_dir / slug
+    layer_dir.mkdir(parents=True, exist_ok=True)
+    for i in range(count):
+        (layer_dir / f"item-{i + 1}.md").write_text(
+            f"---\ntitle: Item {i + 1}\n---\n\nContent for {slug} item {i + 1}."
+        )
+
+
+class TestSeedStrategicObjectives:
+    """Tests for POST /api/seed/strategic-objectives."""
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        resp = client.post("/api/seed/strategic-objectives")
+        assert resp.status_code == 401
+
+    def test_fails_when_values_empty(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Returns failure when values layer is empty (SA populated)."""
+        _populate_layer(data_dir, "situational-awareness")
+
+        resp = client.post(
+            "/api/seed/strategic-objectives", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "values" in data["message"]
+
+    def test_fails_when_sa_empty(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Returns failure when SA layer is empty (values populated)."""
+        _populate_layer(data_dir, "values")
+
+        resp = client.post(
+            "/api/seed/strategic-objectives", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "situational-awareness" in data["message"]
+
+    def test_fails_when_both_prereqs_empty(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Returns failure listing both empty layers."""
+        resp = client.post(
+            "/api/seed/strategic-objectives", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "values" in data["message"]
+        assert "situational-awareness" in data["message"]
+
+    def test_prerequisite_failure_does_not_clear_target(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Existing items in strategic-objectives remain when prerequisites fail."""
+        _populate_layer(data_dir, "strategic-objectives", count=2)
+
+        resp = client.post(
+            "/api/seed/strategic-objectives", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+
+        # Items should still be there
+        items = list_items(data_dir, "strategic-objectives")
+        assert len(items) == 2
+
+    def test_succeeds_when_prerequisites_met(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Returns success when values and SA both have items."""
+        _populate_layer(data_dir, "values")
+        _populate_layer(data_dir, "situational-awareness")
+
+        mock_session = MagicMock()
+        mock_result = AgentResult(
+            is_error=False,
+            result_text="Created strategic objectives.",
+            full_output="Created strategic objectives.",
+            total_cost_usd=0.02,
+            num_turns=2,
+        )
+        mock_session.run = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "policy_factory.agent.session.AgentSession",
+            return_value=mock_session,
+        ):
+            resp = client.post(
+                "/api/seed/strategic-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["cascade_id"] is None
+
+
+class TestSeedTacticalObjectives:
+    """Tests for POST /api/seed/tactical-objectives."""
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        resp = client.post("/api/seed/tactical-objectives")
+        assert resp.status_code == 401
+
+    def test_fails_when_strategic_empty(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Fails when strategic-objectives is empty even if values and SA are populated."""
+        _populate_layer(data_dir, "values")
+        _populate_layer(data_dir, "situational-awareness")
+        # strategic-objectives deliberately not populated
+
+        resp = client.post(
+            "/api/seed/tactical-objectives", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "strategic-objectives" in data["message"]
+
+    def test_fails_when_values_empty(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Fails when any prerequisite is empty."""
+        _populate_layer(data_dir, "situational-awareness")
+        _populate_layer(data_dir, "strategic-objectives")
+
+        resp = client.post(
+            "/api/seed/tactical-objectives", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "values" in data["message"]
+
+    def test_prerequisite_failure_does_not_clear_target(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Existing items in tactical-objectives remain when prerequisites fail."""
+        _populate_layer(data_dir, "tactical-objectives", count=1)
+
+        resp = client.post(
+            "/api/seed/tactical-objectives", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+
+        items = list_items(data_dir, "tactical-objectives")
+        assert len(items) == 1
+
+    def test_succeeds_when_prerequisites_met(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Returns success when all 3 prerequisite layers have items."""
+        _populate_layer(data_dir, "values")
+        _populate_layer(data_dir, "situational-awareness")
+        _populate_layer(data_dir, "strategic-objectives")
+
+        mock_session = MagicMock()
+        mock_result = AgentResult(
+            is_error=False,
+            result_text="Created tactical objectives.",
+            full_output="Created tactical objectives.",
+            total_cost_usd=0.02,
+            num_turns=2,
+        )
+        mock_session.run = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "policy_factory.agent.session.AgentSession",
+            return_value=mock_session,
+        ):
+            resp = client.post(
+                "/api/seed/tactical-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["cascade_id"] is None
+
+
+class TestSeedPolicies:
+    """Tests for POST /api/seed/policies."""
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        resp = client.post("/api/seed/policies")
+        assert resp.status_code == 401
+
+    def test_fails_when_tactical_empty(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Fails when tactical-objectives is empty even if all others are populated."""
+        _populate_layer(data_dir, "values")
+        _populate_layer(data_dir, "situational-awareness")
+        _populate_layer(data_dir, "strategic-objectives")
+        # tactical-objectives deliberately not populated
+
+        resp = client.post("/api/seed/policies", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "tactical-objectives" in data["message"]
+
+    def test_fails_when_any_prerequisite_empty(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Fails when any single prerequisite layer is empty."""
+        # Populate all except SA
+        _populate_layer(data_dir, "values")
+        _populate_layer(data_dir, "strategic-objectives")
+        _populate_layer(data_dir, "tactical-objectives")
+
+        resp = client.post("/api/seed/policies", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "situational-awareness" in data["message"]
+
+    def test_prerequisite_failure_does_not_clear_target(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Existing items in policies remain when prerequisites fail."""
+        _populate_layer(data_dir, "policies", count=3)
+
+        resp = client.post("/api/seed/policies", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+
+        items = list_items(data_dir, "policies")
+        assert len(items) == 3
+
+    def test_succeeds_when_prerequisites_met(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Returns success when all 4 prerequisite layers have items."""
+        _populate_layer(data_dir, "values")
+        _populate_layer(data_dir, "situational-awareness")
+        _populate_layer(data_dir, "strategic-objectives")
+        _populate_layer(data_dir, "tactical-objectives")
+
+        mock_session = MagicMock()
+        mock_result = AgentResult(
+            is_error=False,
+            result_text="Created policies.",
+            full_output="Created policies.",
+            total_cost_usd=0.02,
+            num_turns=2,
+        )
+        mock_session.run = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "policy_factory.agent.session.AgentSession",
+            return_value=mock_session,
+        ):
+            resp = client.post("/api/seed/policies", headers=auth_headers)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["cascade_id"] is None

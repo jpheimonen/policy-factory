@@ -1,15 +1,20 @@
-"""Seed router — Values and Situational Awareness population.
+"""Seed router — Policy layer population.
 
-The seed endpoints trigger specialized agents to populate the foundational
-layers of the policy stack:
+The seed endpoints trigger specialized agents to populate the layers
+of the policy stack:
 
 - POST /api/seed/values — Uses Claude's knowledge to synthesize axiomatic
   Finnish policy values (no tools needed, uses training data)
 - POST /api/seed/ — Uses web search to research Finland's current tech
   policy landscape and populate the Situational Awareness layer
+- POST /api/seed/strategic-objectives — Seeds the strategic objectives layer
+- POST /api/seed/tactical-objectives — Seeds the tactical objectives layer
+- POST /api/seed/policies — Seeds the policies layer
 
-Both seeding operations are re-runnable and will clear existing content
-before writing new items.
+All seeding operations are re-runnable and will clear existing content
+before writing new items. The upper-layer seeds (strategic, tactical,
+policies) validate that all prerequisite layers below are populated
+before proceeding.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ import yaml
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from policy_factory.cascade.content import check_prerequisites, gather_context_below
 from policy_factory.cascade.orchestrator import trigger_cascade
 from policy_factory.data.git import commit_changes
 from policy_factory.data.layers import LAYERS, delete_item, list_items, write_item
@@ -549,3 +555,209 @@ async def get_seed_status(
         )
 
     return SeedStatusResponse(layers=entries)
+
+
+# ---------------------------------------------------------------------------
+# Upper-layer seed helper and endpoints
+# ---------------------------------------------------------------------------
+
+
+async def _seed_upper_layer(
+    *,
+    layer_slug: str,
+    agent_role: str,
+    template_name: str,
+    agent_label: str,
+) -> SeedResponse:
+    """Shared logic for seeding an upper-layer (strategic, tactical, policies).
+
+    Validates prerequisites, clears existing items, gathers context from
+    layers below, runs the seed agent, and commits to git.
+
+    Args:
+        layer_slug: Target layer slug (e.g. ``"strategic-objectives"``).
+        agent_role: Agent role key (e.g. ``"strategic-seed"``).
+        template_name: Prompt template name (e.g. ``"strategic"``).
+        agent_label: Human-readable label for logging/display.
+
+    Returns:
+        SeedResponse with success/failure status and message.
+    """
+    store = get_store()
+    emitter = get_event_emitter()
+    data_dir = get_data_dir()
+
+    # 1. Validate prerequisites — all layers below must have items
+    empty_layers = check_prerequisites(data_dir, layer_slug)
+    if empty_layers:
+        names = ", ".join(empty_layers)
+        return SeedResponse(
+            success=False,
+            message=(
+                f"Cannot seed {layer_slug}: prerequisite layers are empty: {names}"
+            ),
+        )
+
+    # 2. Clear existing items in the target layer
+    existing_items = list_items(data_dir, layer_slug)
+    for item in existing_items:
+        try:
+            delete_item(data_dir, layer_slug, item.filename)
+        except Exception:
+            logger.warning(
+                "Failed to delete existing %s item %s",
+                layer_slug,
+                item.filename,
+            )
+
+    # 3. Gather context from all layers below
+    context_below = gather_context_below(data_dir, layer_slug)
+
+    # Import agent framework lazily
+    from policy_factory.agent.config import AgentConfig, resolve_model
+    from policy_factory.agent.prompts import build_agent_prompt
+    from policy_factory.agent.session import AgentSession
+
+    # 4. Build the prompt
+    current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    prompt = build_agent_prompt(
+        "seed",
+        template_name,
+        current_date=current_date,
+        context_below=context_below,
+    )
+
+    # Resolve model for this role
+    model = resolve_model(agent_role)
+
+    # Create agent config
+    config = AgentConfig(
+        model=model,
+        role=agent_role,
+    )
+
+    # 5. Record agent run
+    agent_run_id = store.create_agent_run(
+        cascade_id=None,
+        agent_type=agent_role,
+        agent_label=agent_label,
+        model=model,
+        target_layer=layer_slug,
+    )
+
+    # 6. Execute the agent
+    session = AgentSession(
+        config=config,
+        emitter=emitter,
+        context_id=agent_role,
+        agent_label=agent_label,
+        data_dir=data_dir,
+    )
+
+    try:
+        result = await session.run(prompt)
+
+        store.complete_agent_run(
+            agent_run_id,
+            success=not result.is_error,
+            error_message=result.result_text if result.is_error else None,
+            cost=result.total_cost_usd,
+            output_text=result.full_output,
+        )
+
+        if result.is_error:
+            return SeedResponse(
+                success=False,
+                message=f"{agent_label} failed: {result.result_text}",
+            )
+
+    except Exception as exc:
+        store.complete_agent_run(
+            agent_run_id,
+            success=False,
+            error_message=str(exc),
+        )
+        return SeedResponse(
+            success=False,
+            message=f"{agent_label} error: {exc}",
+        )
+
+    # 7. Commit to git
+    try:
+        commit_changes(data_dir, f"Seed {layer_slug} layer")
+    except Exception:
+        logger.warning(
+            "Git commit failed after %s seeding", layer_slug, exc_info=True
+        )
+
+    # 8. Return success (no cascade_id — upper seeds don't trigger cascades)
+    return SeedResponse(
+        success=True,
+        message=f"{layer_slug} layer seeded successfully.",
+    )
+
+
+@router.post("/strategic-objectives")
+async def seed_strategic_objectives(
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+) -> SeedResponse:
+    """Seed the strategic objectives layer.
+
+    Validates that the values and situational-awareness layers are
+    populated, clears existing strategic-objectives items, gathers
+    context from layers below, runs the strategic-seed agent, and
+    commits to git.
+
+    Returns:
+        SeedResponse with success status and message.
+    """
+    return await _seed_upper_layer(
+        layer_slug="strategic-objectives",
+        agent_role="strategic-seed",
+        template_name="strategic",
+        agent_label="Strategic Objectives seed agent",
+    )
+
+
+@router.post("/tactical-objectives")
+async def seed_tactical_objectives(
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+) -> SeedResponse:
+    """Seed the tactical objectives layer.
+
+    Validates that the values, situational-awareness, and
+    strategic-objectives layers are populated, clears existing
+    tactical-objectives items, gathers context from layers below,
+    runs the tactical-seed agent, and commits to git.
+
+    Returns:
+        SeedResponse with success status and message.
+    """
+    return await _seed_upper_layer(
+        layer_slug="tactical-objectives",
+        agent_role="tactical-seed",
+        template_name="tactical",
+        agent_label="Tactical Objectives seed agent",
+    )
+
+
+@router.post("/policies")
+async def seed_policies(
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+) -> SeedResponse:
+    """Seed the policies layer.
+
+    Validates that all four layers below (values, situational-awareness,
+    strategic-objectives, tactical-objectives) are populated, clears
+    existing policies items, gathers context from layers below, runs
+    the policies-seed agent, and commits to git.
+
+    Returns:
+        SeedResponse with success status and message.
+    """
+    return await _seed_upper_layer(
+        layer_slug="policies",
+        agent_role="policies-seed",
+        template_name="policies",
+        agent_label="Policies seed agent",
+    )
