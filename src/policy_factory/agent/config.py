@@ -35,6 +35,9 @@ AgentRole = Literal[
     "idea-generator",
     "seed",
     "values-seed",
+    "strategic-seed",
+    "tactical-seed",
+    "policies-seed",
 ]
 
 # Default model assignments per role.
@@ -49,12 +52,15 @@ AgentRole = Literal[
 #   Claude Sonnet — mid-tier Claude tasks needing tools
 #   Gemini 2.5 Flash — cheap text-in/text-out (synthesis, ideas, values-seed)
 #   Gemini 2.5 Flash Lite — cheapest tier (classifier)
-_DEFAULT_MODELS: dict[str, str] = {
-    # --- Claude models (need MCP file tools via CLI) ---
-    "generator": "claude-sonnet-4-20250514",
-    "critic": "claude-sonnet-4-20250514",
-    "heartbeat-sa-update": "claude-sonnet-4-20250514",
-    "seed": "claude-sonnet-4-20250514",
+_DEFAULT_MODELS: dict[str, str | None] = {
+    # --- Claude SDK roles (use CLI default model, currently Opus 4.6) ---
+    "generator": None,
+    "critic": None,
+    "heartbeat-sa-update": None,
+    "seed": None,
+    "strategic-seed": None,
+    "tactical-seed": None,
+    "policies-seed": None,
     # --- Gemini models (heartbeat skim/triage get RSS news in prompt) ---
     "heartbeat-skim": "gemini-2.5-flash",
     "heartbeat-triage": "gemini-2.5-flash",
@@ -79,20 +85,27 @@ _ENV_VAR_MAP: dict[str, str] = {
     "idea-generator": "POLICY_FACTORY_MODEL_IDEA_GENERATOR",
     "seed": "POLICY_FACTORY_MODEL_SEED",
     "values-seed": "POLICY_FACTORY_MODEL_VALUES_SEED",
+    "strategic-seed": "POLICY_FACTORY_MODEL_STRATEGIC_SEED",
+    "tactical-seed": "POLICY_FACTORY_MODEL_TACTICAL_SEED",
+    "policies-seed": "POLICY_FACTORY_MODEL_POLICIES_SEED",
 }
 
 
-def resolve_model(role: str) -> str:
+def resolve_model(role: str) -> str | None:
     """Resolve the model name for an agent role.
 
     Checks for an environment variable override first, then falls back
-    to the built-in default.
+    to the built-in default.  When the default is ``None`` (CLI-default
+    roles) and no env var override is set, ``None`` is returned — the
+    caller should omit the model argument so the CLI picks its own
+    default.
 
     Args:
         role: Agent role (e.g. ``"generator"``, ``"critic"``).
 
     Returns:
-        The resolved model name string.
+        The resolved model name string, or ``None`` for CLI-default roles
+        with no env var override.
 
     Raises:
         ValueError: If the role is not recognised.
@@ -102,7 +115,10 @@ def resolve_model(role: str) -> str:
         raise ValueError(f"Unknown agent role: {role!r}. Valid roles: {valid}")
 
     env_var = _ENV_VAR_MAP[role]
-    return os.environ.get(env_var) or _DEFAULT_MODELS[role]
+    override = os.environ.get(env_var)
+    if override:
+        return override
+    return _DEFAULT_MODELS[role]
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +152,10 @@ _ALLOWED_TOOLS_BY_ROLE: dict[str, list[str]] = {
     "idea-evaluator": [],
     # Idea generator creates ideas from context, no tools needed
     "idea-generator": [],
+    # Upper-layer seed agents need file tools only (no WebSearch)
+    "strategic-seed": [MCP_SERVER_REF],
+    "tactical-seed": [MCP_SERVER_REF],
+    "policies-seed": [MCP_SERVER_REF],
 }
 
 # ---------------------------------------------------------------------------
@@ -156,9 +176,10 @@ _TOOL_SET_BY_ROLE: dict[str, str] = {
     "values-seed": TOOL_SET_NONE,
     "idea-evaluator": TOOL_SET_NONE,
     "idea-generator": TOOL_SET_NONE,
+    "strategic-seed": TOOL_SET_FULL,
+    "tactical-seed": TOOL_SET_FULL,
+    "policies-seed": TOOL_SET_FULL,
 }
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +198,9 @@ _USE_SEARCH_BY_ROLE: dict[str, bool] = {
     "values-seed": False,
     "idea-evaluator": False,
     "idea-generator": False,
+    "strategic-seed": False,
+    "tactical-seed": False,
+    "policies-seed": False,
 }
 
 

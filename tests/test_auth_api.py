@@ -221,11 +221,22 @@ class TestRegister:
         )
         assert resp.status_code == 422
 
-    def test_password_too_short(self, client: TestClient) -> None:
-        """Password under minimum length is rejected."""
+    def test_first_user_allows_short_password(self, client: TestClient) -> None:
+        """First user (admin setup) can choose any password length."""
         resp = client.post(
             "/api/auth/register",
-            json={"email": "test@example.com", "password": "short"},
+            json={"email": "admin@example.com", "password": "short"},
+        )
+        assert resp.status_code == 200
+
+    def test_password_too_short_after_first_user(
+        self, client: TestClient, admin_user: dict
+    ) -> None:
+        """Password under minimum length is rejected for non-first users."""
+        resp = client.post(
+            "/api/auth/register",
+            json={"email": "newuser@example.com", "password": "short"},
+            headers=auth_header(admin_user["token"]),
         )
         assert resp.status_code == 422
 

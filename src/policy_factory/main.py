@@ -1,12 +1,17 @@
 """CLI entry point for Policy Factory."""
 
+from __future__ import annotations
+
 import argparse
 import logging
 import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from policy_factory.store import PolicyStore
 
 
 def load_env_files() -> None:
@@ -63,6 +68,8 @@ Environment:
   POLICY_FACTORY_PORT            Port to bind to (overrides --port default)
   POLICY_FACTORY_DB_PATH         Path to SQLite database file
   POLICY_FACTORY_DATA_DIR        Path to data directory
+  POLICY_FACTORY_ADMIN_EMAIL     Admin email (default: admin@admin.com)
+  POLICY_FACTORY_ADMIN_PASSWORD  Admin password (default: admin)
   POLICY_FACTORY_HEARTBEAT_INTERVAL  Heartbeat interval in seconds (default: 14400)
   POLICY_FACTORY_HEARTBEAT_ENABLED   Enable heartbeat (default: true)
         """,
@@ -109,6 +116,32 @@ Environment:
     return parser
 
 
+def _seed_admin_user(store: PolicyStore) -> None:
+    """Ensure the default admin user exists.
+
+    Reads ``POLICY_FACTORY_ADMIN_EMAIL`` and ``POLICY_FACTORY_ADMIN_PASSWORD``
+    from the environment, falling back to ``admin@admin.com`` / ``admin``.
+
+    If a user with that email already exists nothing happens.
+    If no users exist at all, the seeded user is given the ``admin`` role.
+    If users already exist but the configured email is missing, the user
+    is inserted with the ``admin`` role (it's an explicit seed, not a
+    regular registration).
+    """
+    from policy_factory.auth import hash_password
+
+    email = os.environ.get("POLICY_FACTORY_ADMIN_EMAIL", "admin@admin.com")
+    password = os.environ.get("POLICY_FACTORY_ADMIN_PASSWORD", "admin")
+
+    # Already exists — nothing to do
+    if store.email_exists(email):
+        return
+
+    hashed = hash_password(password)
+    store.create_user(email, hashed, role="admin")
+    print(f"Admin user seeded: {email}")
+
+
 def server_command(args: argparse.Namespace) -> int:
     """Start the web UI server."""
     import uvicorn
@@ -125,6 +158,9 @@ def server_command(args: argparse.Namespace) -> int:
     db_path = get_default_db_path()
     store = PolicyStore(db_path)
     print(f"Database initialized at {db_path}")
+
+    # Seed the admin user (idempotent — skips if already exists)
+    _seed_admin_user(store)
 
     # Create app with store
     app = create_app(store=store)

@@ -38,6 +38,10 @@ import {
   StatusItem,
   StatusDot,
   StatusActions,
+  LayerRow,
+  LayerInfo,
+  LayerName,
+  LayerCount,
 } from "./AdminPage.styles.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -63,12 +67,25 @@ interface HeartbeatStatus {
   } | null;
 }
 
-interface SeedStatus {
-  values_seeded: boolean;
-  values_count: number;
-  sa_seeded: boolean;
-  sa_count: number;
+interface LayerStatusEntry {
+  slug: string;
+  display_name: string;
+  seeded: boolean;
+  count: number;
 }
+
+interface SeedStatus {
+  layers: LayerStatusEntry[];
+}
+
+/** Maps each layer slug to its seed endpoint path. */
+const SEED_ENDPOINT_BY_SLUG: Record<string, string> = {
+  values: "/api/seed/values",
+  "situational-awareness": "/api/seed/",
+  "strategic-objectives": "/api/seed/strategic-objectives",
+  "tactical-objectives": "/api/seed/tactical-objectives",
+  policies: "/api/seed/policies",
+};
 
 // ── Helper: format date ────────────────────────────────────────────────
 
@@ -148,9 +165,11 @@ export function AdminPage() {
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [triggerHeartbeatLoading, setTriggerHeartbeatLoading] = useState(false);
-  const [seedValuesLoading, setSeedValuesLoading] = useState(false);
-  const [seedSaLoading, setSeedSaLoading] = useState(false);
+  const [seedingLayer, setSeedingLayer] = useState<Record<string, boolean>>({});
   const [fullCascadeLoading, setFullCascadeLoading] = useState(false);
+
+  /** True when any per-layer seed operation is running. */
+  const anySeedRunning = Object.values(seedingLayer).some(Boolean) || fullCascadeLoading;
 
   // ── Data fetching ───────────────────────────────────────────────────
 
@@ -279,31 +298,20 @@ export function AdminPage() {
     }
   };
 
-  // ── Seed Values handler ──────────────────────────────────────────────
+  // ── Generic per-layer seed handler ──────────────────────────────────
 
-  const handleSeedValues = async () => {
-    setSeedValuesLoading(true);
+  const handleSeedLayer = async (slug: string) => {
+    const endpoint = SEED_ENDPOINT_BY_SLUG[slug];
+    if (!endpoint) return;
+
+    setSeedingLayer((prev) => ({ ...prev, [slug]: true }));
     try {
-      await apiRequest("/api/seed/values", { method: "POST" });
+      await apiRequest(endpoint, { method: "POST" });
       setTimeout(fetchStatus, 1000);
     } catch {
       // Error handling — button returns to idle
     } finally {
-      setSeedValuesLoading(false);
-    }
-  };
-
-  // ── Seed SA handler ─────────────────────────────────────────────────
-
-  const handleSeedSa = async () => {
-    setSeedSaLoading(true);
-    try {
-      await apiRequest("/api/seed/", { method: "POST" });
-      setTimeout(fetchStatus, 1000);
-    } catch {
-      // Error handling — button returns to idle
-    } finally {
-      setSeedSaLoading(false);
+      setSeedingLayer((prev) => ({ ...prev, [slug]: false }));
     }
   };
 
@@ -525,6 +533,13 @@ export function AdminPage() {
                           ? t("admin.triggerHeartbeatRunning")
                           : t("admin.triggerHeartbeatButton")}
                       </Button>
+                      <Button
+                        $variant="ghost"
+                        $size="sm"
+                        onClick={() => navigate("/heartbeat")}
+                      >
+                        {t("admin.viewHeartbeatLog")}
+                      </Button>
                     </StatusActions>
                   </>
                 ) : (
@@ -539,51 +554,57 @@ export function AdminPage() {
                 </StatusCardTitle>
                 {seedStatus ? (
                   <>
-                    <StatusItem>
-                      <StatusDot $active={seedStatus.values_seeded} />
-                      {seedStatus.values_seeded
-                        ? t("admin.valuesSeeded", { count: String(seedStatus.values_count) })
-                        : t("admin.valuesNotSeeded")}
-                    </StatusItem>
-                    <StatusItem>
-                      <StatusDot $active={seedStatus.sa_seeded} />
-                      {seedStatus.sa_seeded
-                        ? t("admin.saSeeded", { count: String(seedStatus.sa_count) })
-                        : t("admin.saNotSeeded")}
-                    </StatusItem>
-                    {(!seedStatus.values_seeded || !seedStatus.sa_seeded) && (
-                      <StatusItem>
-                        {t("admin.seedGuidance")}
-                      </StatusItem>
-                    )}
+                    {seedStatus.layers.map((layer, index) => {
+                      // Prerequisite logic: positions 0 and 1 (values, SA) have no prereqs.
+                      // Positions 2+ require all layers below to have count > 0.
+                      const prerequisitesMet =
+                        index < 2 ||
+                        seedStatus.layers
+                          .slice(0, index)
+                          .every((l) => l.count > 0);
+
+                      const isLayerLoading = !!seedingLayer[layer.slug];
+                      const buttonDisabled = !prerequisitesMet || anySeedRunning;
+
+                      return (
+                        <LayerRow
+                          key={layer.slug}
+                          $isLast={index === seedStatus.layers.length - 1}
+                        >
+                          <LayerInfo>
+                            <StatusDot $active={layer.seeded} />
+                            <LayerName>{layer.display_name}</LayerName>
+                            {layer.seeded && (
+                              <LayerCount>
+                                ({t("admin.seedLayerCount", { count: String(layer.count) })})
+                              </LayerCount>
+                            )}
+                          </LayerInfo>
+                          <Button
+                            $variant="secondary"
+                            $size="sm"
+                            onClick={() => handleSeedLayer(layer.slug)}
+                            disabled={buttonDisabled}
+                            $loading={isLayerLoading}
+                            title={
+                              !prerequisitesMet
+                                ? t("admin.seedPrerequisiteHint")
+                                : undefined
+                            }
+                          >
+                            {isLayerLoading
+                              ? t("admin.seedLayerRunning", { layer: layer.display_name })
+                              : t("admin.seedLayerButton", { layer: layer.display_name })}
+                          </Button>
+                        </LayerRow>
+                      );
+                    })}
                     <StatusActions>
-                      <Button
-                        $variant="secondary"
-                        $size="sm"
-                        onClick={handleSeedValues}
-                        disabled={seedValuesLoading || seedSaLoading}
-                        $loading={seedValuesLoading}
-                      >
-                        {seedValuesLoading
-                          ? t("admin.seedValuesRunning")
-                          : t("admin.seedValuesButton")}
-                      </Button>
-                      <Button
-                        $variant="secondary"
-                        $size="sm"
-                        onClick={handleSeedSa}
-                        disabled={seedSaLoading || seedValuesLoading}
-                        $loading={seedSaLoading}
-                      >
-                        {seedSaLoading
-                          ? t("admin.seedSaRunning")
-                          : t("admin.seedSaButton")}
-                      </Button>
                       <Button
                         $variant="primary"
                         $size="sm"
                         onClick={handleFullCascade}
-                        disabled={fullCascadeLoading}
+                        disabled={fullCascadeLoading || anySeedRunning}
                         $loading={fullCascadeLoading}
                       >
                         {fullCascadeLoading

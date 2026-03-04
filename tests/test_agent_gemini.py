@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -89,7 +89,6 @@ class TestGenerate:
             # We need to reimport to pick up the mocked module
             with patch("policy_factory.agent.gemini._ensure_api_key", return_value="test-key"):
                 # Directly test the sync part via the async wrapper
-                import asyncio
 
                 def _mock_call() -> str:
                     mock_client_instance = mock_genai_module.Client(api_key="test-key")

@@ -4,9 +4,9 @@ Provides helpers to assemble the full content of a layer (narrative
 summary + all items) as a single formatted text blob suitable for
 substitution into prompt templates as ``{layer_content}``.
 
-This is used by the cascade orchestrator before calling the critic
-runner, so the content is gathered once and passed to both the critic
-runner and synthesis runner.
+Also provides shared utilities for gathering content from all layers
+below a target layer (used by both the cascade orchestrator and the
+seed endpoints) and for checking prerequisite layers.
 """
 
 from __future__ import annotations
@@ -127,3 +127,101 @@ def gather_cross_layer_context(
         return "(This layer has no adjacent layers.)"
 
     return "\n\n".join(parts)
+
+
+def gather_context_below(
+    data_dir: Path,
+    layer_slug: str,
+) -> str:
+    """Gather content from all layers below a given layer.
+
+    Iterates through the layers below ``layer_slug`` in hierarchical
+    order (bottom to top) and assembles their content into a single
+    formatted string.  Each layer's content is wrapped under a heading
+    with the layer's display name.
+
+    This function is the shared implementation used by both the cascade
+    orchestrator (via ``_gather_generation_context``) and the seed
+    endpoints.
+
+    Args:
+        data_dir: Root data directory.
+        layer_slug: The target layer slug.
+
+    Returns:
+        A formatted context string, or an empty string when the target
+        layer is the bottom layer (no layers below).
+
+    Raises:
+        ValueError: If the layer slug is not valid.
+    """
+    from policy_factory.cascade.orchestrator import layers_below
+    from policy_factory.data.layers import LAYERS
+
+    layer_by_slug = {layer.slug: layer for layer in LAYERS}
+
+    below = layers_below(layer_slug)  # raises ValueError for invalid slug
+    if not below:
+        return ""
+
+    parts: list[str] = []
+
+    for below_slug in below:
+        layer_info = layer_by_slug[below_slug]
+        layer_display = layer_info.display_name
+        parts.append(f"## {layer_display} Layer\n")
+
+        narrative = read_narrative(data_dir, below_slug)
+        if narrative:
+            parts.append(f"### Narrative Summary\n{narrative}\n")
+
+        items = list_items(data_dir, below_slug)
+        if items:
+            parts.append("### Items\n")
+            for item_summary in items:
+                try:
+                    fm, body = read_item(data_dir, below_slug, item_summary.filename)
+                    title = fm.get("title", item_summary.filename)
+                    parts.append(f"#### {title}\n{body}\n")
+                except Exception:
+                    logger.warning(
+                        "Failed to read item %s/%s for context",
+                        below_slug,
+                        item_summary.filename,
+                    )
+                    continue
+
+    return "\n".join(parts)
+
+
+def check_prerequisites(
+    data_dir: Path,
+    layer_slug: str,
+) -> list[str]:
+    """Check that all layers below the target have at least one item.
+
+    Used by seed endpoints to validate that prerequisite layers are
+    populated before seeding an upper layer.
+
+    Args:
+        data_dir: Root data directory.
+        layer_slug: The target layer slug.
+
+    Returns:
+        A list of layer slugs that are empty (have zero items).
+        An empty list means all prerequisites are met.
+
+    Raises:
+        ValueError: If the layer slug is not valid.
+    """
+    from policy_factory.cascade.orchestrator import layers_below
+
+    below = layers_below(layer_slug)  # raises ValueError for invalid slug
+
+    empty_layers: list[str] = []
+    for below_slug in below:
+        items = list_items(data_dir, below_slug)
+        if not items:
+            empty_layers.append(below_slug)
+
+    return empty_layers

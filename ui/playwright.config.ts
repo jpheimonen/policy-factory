@@ -10,9 +10,13 @@ import { defineConfig, devices } from "@playwright/test";
  * - Base URL pointing to the frontend dev server (localhost:5173)
  * - Chromium only (single browser project)
  * - CI-aware: retries enabled in CI, disabled locally
+ * - globalSetup clears the users table so registration reopens
+ * - globalTeardown restores the original database from backup
  */
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
   fullyParallel: false,
   workers: 1,
   timeout: 30000,

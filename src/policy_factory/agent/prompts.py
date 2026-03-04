@@ -1,13 +1,12 @@
 """Prompt construction helper for agent sessions.
 
-Loads agent-specific templates with dynamic variable substitution.
-This is a thin wrapper around ``load_prompt()`` that provides a
-convenient call site for agent callers.
+Loads agent-specific templates with dynamic variable substitution
+and auto-prepends the anti-slop preamble to every agent prompt.
 """
 
 from __future__ import annotations
 
-from policy_factory.prompts import load_prompt
+from policy_factory.prompts import load_prompt, load_section
 
 
 def build_agent_prompt(
@@ -17,8 +16,9 @@ def build_agent_prompt(
 ) -> str:
     """Assemble a complete agent prompt from a template.
 
-    Loads the agent-specific template with variable substitution and
-    returns the result directly.
+    Loads the anti-slop preamble section and prepends it to the
+    agent-specific template (with variable substitution applied to
+    the template body only).
 
     Args:
         category: Prompt subdirectory (e.g. ``"generators"``,
@@ -29,9 +29,14 @@ def build_agent_prompt(
             agent template.
 
     Returns:
-        The assembled prompt string with variables substituted.
+        The assembled prompt string with the anti-slop preamble
+        prepended, separated from the template body by a double
+        newline.
 
     Raises:
-        FileNotFoundError: If the template file does not exist.
+        FileNotFoundError: If the anti-slop section file or the
+            template file does not exist.
     """
-    return load_prompt(category, name, **variables)
+    preamble = load_section("anti-slop")
+    body = load_prompt(category, name, **variables)
+    return preamble + "\n\n" + body

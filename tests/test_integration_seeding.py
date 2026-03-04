@@ -22,7 +22,7 @@ from policy_factory.agent.session import AgentResult
 from policy_factory.auth import create_access_token, hash_password
 from policy_factory.data.git import _run_git, is_git_repo
 from policy_factory.data.init import initialize_data_directory
-from policy_factory.data.layers import LAYER_SLUGS, list_items
+from policy_factory.data.layers import LAYER_SLUGS, LAYERS, list_items
 from policy_factory.events import EventEmitter
 from policy_factory.server.app import create_app
 from policy_factory.server.ws import ConnectionManager
@@ -582,6 +582,19 @@ class TestSASeedingFlow:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_layer(layers: list[dict], slug: str) -> dict:
+    """Find a layer entry by slug in the response layers list."""
+    for entry in layers:
+        if entry["slug"] == slug:
+            return entry
+    raise AssertionError(f"Layer {slug!r} not found in response")
+
+
+# ---------------------------------------------------------------------------
 # Seed Status Tests
 # ---------------------------------------------------------------------------
 
@@ -602,13 +615,13 @@ class TestSeedStatusEndpoint:
         """Status correctly reflects empty layers after initialization."""
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        layers = resp.json()["layers"]
 
-        # Both layers should be empty
-        assert data["values_seeded"] is False
-        assert data["values_count"] == 0
-        assert data["sa_seeded"] is False
-        assert data["sa_count"] == 0
+        # All 5 layers should be empty
+        assert len(layers) == 5
+        for entry in layers:
+            assert entry["seeded"] is False
+            assert entry["count"] == 0
 
     def test_status_reflects_populated_values(
         self,
@@ -624,12 +637,15 @@ class TestSeedStatusEndpoint:
 
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        layers = resp.json()["layers"]
 
-        assert data["values_seeded"] is True
-        assert data["values_count"] == 2
-        assert data["sa_seeded"] is False
-        assert data["sa_count"] == 0
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is True
+        assert values["count"] == 2
+
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is False
+        assert sa["count"] == 0
 
     def test_status_reflects_populated_sa(
         self,
@@ -646,12 +662,15 @@ class TestSeedStatusEndpoint:
 
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        layers = resp.json()["layers"]
 
-        assert data["values_seeded"] is False
-        assert data["values_count"] == 0
-        assert data["sa_seeded"] is True
-        assert data["sa_count"] == 3
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is False
+        assert values["count"] == 0
+
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is True
+        assert sa["count"] == 3
 
     def test_status_returns_correct_counts_for_both_layers(
         self,
@@ -671,12 +690,29 @@ class TestSeedStatusEndpoint:
 
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        layers = resp.json()["layers"]
 
-        assert data["values_seeded"] is True
-        assert data["values_count"] == 1
-        assert data["sa_seeded"] is True
-        assert data["sa_count"] == 2
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is True
+        assert values["count"] == 1
+
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is True
+        assert sa["count"] == 2
+
+    def test_status_includes_all_five_layers(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Response contains exactly 5 layer entries with correct slugs."""
+        resp = client.get("/api/seed/status", headers=auth_headers)
+        assert resp.status_code == 200
+        layers = resp.json()["layers"]
+        assert len(layers) == 5
+        expected_slugs = [layer.slug for layer in LAYERS]
+        actual_slugs = [entry["slug"] for entry in layers]
+        assert actual_slugs == expected_slugs
 
 
 # ---------------------------------------------------------------------------
@@ -820,3 +856,639 @@ class TestAgentMockingAtSessionLevel:
         # Verify the session was used (mocked)
         assert session_run_called is True
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Upper-layer seed helpers
+# ---------------------------------------------------------------------------
+
+
+def _populate_layer(data_dir: Path, slug: str, count: int = 1) -> None:
+    """Write minimal markdown items to a layer directory."""
+    layer_dir = data_dir / slug
+    layer_dir.mkdir(parents=True, exist_ok=True)
+    for i in range(count):
+        (layer_dir / f"item-{i + 1}.md").write_text(
+            f"---\ntitle: Item {i + 1}\n---\n\nContent for {slug} item {i + 1}."
+        )
+
+
+def _populate_prerequisites(data_dir: Path, target_slug: str) -> None:
+    """Populate all prerequisite layers for a target layer."""
+    from policy_factory.cascade.orchestrator import layers_below
+
+    for slug in layers_below(target_slug):
+        _populate_layer(data_dir, slug)
+
+
+def _make_mock_upper_layer_agent_result(
+    data_dir: Path, layer_slug: str
+) -> AgentResult:
+    """Create a mock AgentResult for upper-layer seeding that writes files.
+
+    Simulates what the agent would do — write markdown files to the
+    target layer directory via FILE_TOOLS.
+    """
+    layer_dir = data_dir / layer_slug
+    layer_dir.mkdir(parents=True, exist_ok=True)
+
+    files = [
+        ("item-alpha.md", "Item Alpha", "Alpha content."),
+        ("item-beta.md", "Item Beta", "Beta content."),
+    ]
+    for filename, title, content in files:
+        (layer_dir / filename).write_text(
+            f"---\ntitle: {title}\nstatus: draft\n---\n\n{content}"
+        )
+
+    output = f"Created 2 {layer_slug} items."
+    return AgentResult(
+        is_error=False,
+        result_text=output,
+        full_output=output,
+        total_cost_usd=0.02,
+        num_turns=2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Strategic Objectives Seeding Flow Tests
+# ---------------------------------------------------------------------------
+
+
+class TestStrategicSeedingFlow:
+    """Integration tests for POST /api/seed/strategic-objectives."""
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        resp = client.post("/api/seed/strategic-objectives")
+        assert resp.status_code == 401
+
+    def test_creates_items_in_correct_directory(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Agent-written files appear in strategic-objectives directory."""
+        _populate_prerequisites(data_dir, "strategic-objectives")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "strategic-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post(
+                "/api/seed/strategic-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+        items = list_items(data_dir, "strategic-objectives")
+        assert len(items) == 2
+        filenames = {item.filename for item in items}
+        assert "item-alpha.md" in filenames
+        assert "item-beta.md" in filenames
+
+    def test_clears_existing_items_before_seeding(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Old items are removed before the agent runs."""
+        _populate_prerequisites(data_dir, "strategic-objectives")
+        _populate_layer(data_dir, "strategic-objectives", count=3)
+
+        # Verify old items exist
+        items_before = list_items(data_dir, "strategic-objectives")
+        assert len(items_before) == 3
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "strategic-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post(
+                "/api/seed/strategic-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+
+        items_after = list_items(data_dir, "strategic-objectives")
+        filenames = {item.filename for item in items_after}
+        # Old items gone, new ones present
+        assert "item-1.md" not in filenames
+        assert "item-alpha.md" in filenames
+
+    def test_commits_to_git(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """A git commit is made after successful seeding."""
+        _populate_prerequisites(data_dir, "strategic-objectives")
+
+        log_before = _run_git(["rev-list", "--count", "HEAD"], cwd=data_dir)
+        count_before = int(log_before.stdout.strip())
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "strategic-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post(
+                "/api/seed/strategic-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+
+        log_after = _run_git(["rev-list", "--count", "HEAD"], cwd=data_dir)
+        count_after = int(log_after.stdout.strip())
+        assert count_after == count_before + 1
+
+        log_msg = _run_git(["log", "-1", "--format=%s"], cwd=data_dir)
+        assert "strategic-objectives" in log_msg.stdout.lower()
+
+    def test_records_agent_run(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+        store: PolicyStore,
+    ) -> None:
+        """An agent run record is created with the correct type and layer."""
+        _populate_prerequisites(data_dir, "strategic-objectives")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "strategic-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post(
+                "/api/seed/strategic-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+
+        runs = store.list_agent_runs(agent_type="strategic-seed")
+        assert len(runs) == 1
+        assert runs[0].target_layer == "strategic-objectives"
+        assert runs[0].success is True
+
+    def test_returns_error_on_agent_failure(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Returns failure response when the agent errors."""
+        _populate_prerequisites(data_dir, "strategic-objectives")
+
+        mock_result = _make_mock_failing_agent_result()
+        with mock_agent_session(mock_result):
+            resp = client.post(
+                "/api/seed/strategic-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "failed" in data["message"].lower()
+
+    def test_does_not_trigger_cascade(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Strategic seed does NOT trigger a cascade."""
+        _populate_prerequisites(data_dir, "strategic-objectives")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "strategic-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run), patch(
+            "policy_factory.server.routers.seed.trigger_cascade",
+            new_callable=AsyncMock,
+        ) as mock_cascade:
+            resp = client.post(
+                "/api/seed/strategic-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+        mock_cascade.assert_not_called()
+
+    def test_prerequisite_failure_does_not_clear_items(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """When prerequisites fail, existing target items are preserved."""
+        _populate_layer(data_dir, "strategic-objectives", count=2)
+        # Don't populate prerequisites
+
+        resp = client.post(
+            "/api/seed/strategic-objectives", headers=auth_headers
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+
+        items = list_items(data_dir, "strategic-objectives")
+        assert len(items) == 2
+
+
+# ---------------------------------------------------------------------------
+# Tactical Objectives Seeding Flow Tests
+# ---------------------------------------------------------------------------
+
+
+class TestTacticalSeedingFlow:
+    """Integration tests for POST /api/seed/tactical-objectives."""
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        resp = client.post("/api/seed/tactical-objectives")
+        assert resp.status_code == 401
+
+    def test_creates_items_in_correct_directory(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Agent-written files appear in tactical-objectives directory."""
+        _populate_prerequisites(data_dir, "tactical-objectives")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "tactical-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post(
+                "/api/seed/tactical-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+        items = list_items(data_dir, "tactical-objectives")
+        assert len(items) == 2
+
+    def test_clears_existing_items(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Old items are removed before seeding."""
+        _populate_prerequisites(data_dir, "tactical-objectives")
+        _populate_layer(data_dir, "tactical-objectives", count=2)
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "tactical-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post(
+                "/api/seed/tactical-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+
+        items = list_items(data_dir, "tactical-objectives")
+        filenames = {item.filename for item in items}
+        assert "item-1.md" not in filenames
+        assert "item-alpha.md" in filenames
+
+    def test_commits_to_git(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """A git commit is made after successful seeding."""
+        _populate_prerequisites(data_dir, "tactical-objectives")
+
+        log_before = _run_git(["rev-list", "--count", "HEAD"], cwd=data_dir)
+        count_before = int(log_before.stdout.strip())
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "tactical-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post(
+                "/api/seed/tactical-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+
+        log_after = _run_git(["rev-list", "--count", "HEAD"], cwd=data_dir)
+        count_after = int(log_after.stdout.strip())
+        assert count_after == count_before + 1
+
+        log_msg = _run_git(["log", "-1", "--format=%s"], cwd=data_dir)
+        assert "tactical-objectives" in log_msg.stdout.lower()
+
+    def test_records_agent_run(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+        store: PolicyStore,
+    ) -> None:
+        """An agent run record is created with the correct agent type."""
+        _populate_prerequisites(data_dir, "tactical-objectives")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "tactical-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post(
+                "/api/seed/tactical-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+
+        runs = store.list_agent_runs(agent_type="tactical-seed")
+        assert len(runs) == 1
+        assert runs[0].target_layer == "tactical-objectives"
+        assert runs[0].success is True
+
+    def test_returns_error_on_agent_failure(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Returns failure response when the agent errors."""
+        _populate_prerequisites(data_dir, "tactical-objectives")
+
+        mock_result = _make_mock_failing_agent_result()
+        with mock_agent_session(mock_result):
+            resp = client.post(
+                "/api/seed/tactical-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "failed" in data["message"].lower()
+
+    def test_does_not_trigger_cascade(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Tactical seed does NOT trigger a cascade."""
+        _populate_prerequisites(data_dir, "tactical-objectives")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(
+                data_dir, "tactical-objectives"
+            )
+
+        with mock_agent_session_with_side_effect(mock_run), patch(
+            "policy_factory.server.routers.seed.trigger_cascade",
+            new_callable=AsyncMock,
+        ) as mock_cascade:
+            resp = client.post(
+                "/api/seed/tactical-objectives", headers=auth_headers
+            )
+
+        assert resp.status_code == 200
+        mock_cascade.assert_not_called()
+
+    def test_fails_when_only_values_and_sa_populated(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Fails when strategic-objectives is empty even if values and SA are fine."""
+        _populate_layer(data_dir, "values")
+        _populate_layer(data_dir, "situational-awareness")
+        # strategic-objectives deliberately not populated
+
+        resp = client.post(
+            "/api/seed/tactical-objectives", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "strategic-objectives" in data["message"]
+
+    def test_prerequisite_failure_does_not_clear_items(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """When prerequisites fail, existing target items are preserved."""
+        _populate_layer(data_dir, "tactical-objectives", count=1)
+
+        resp = client.post(
+            "/api/seed/tactical-objectives", headers=auth_headers
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+
+        items = list_items(data_dir, "tactical-objectives")
+        assert len(items) == 1
+
+
+# ---------------------------------------------------------------------------
+# Policies Seeding Flow Tests
+# ---------------------------------------------------------------------------
+
+
+class TestPoliciesSeedingFlow:
+    """Integration tests for POST /api/seed/policies."""
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        resp = client.post("/api/seed/policies")
+        assert resp.status_code == 401
+
+    def test_creates_items_in_correct_directory(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Agent-written files appear in policies directory."""
+        _populate_prerequisites(data_dir, "policies")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(data_dir, "policies")
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post("/api/seed/policies", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+        items = list_items(data_dir, "policies")
+        assert len(items) == 2
+
+    def test_clears_existing_items(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Old items are removed before seeding."""
+        _populate_prerequisites(data_dir, "policies")
+        _populate_layer(data_dir, "policies", count=4)
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(data_dir, "policies")
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post("/api/seed/policies", headers=auth_headers)
+
+        assert resp.status_code == 200
+
+        items = list_items(data_dir, "policies")
+        filenames = {item.filename for item in items}
+        assert "item-1.md" not in filenames
+        assert "item-alpha.md" in filenames
+
+    def test_commits_to_git(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """A git commit is made after successful seeding."""
+        _populate_prerequisites(data_dir, "policies")
+
+        log_before = _run_git(["rev-list", "--count", "HEAD"], cwd=data_dir)
+        count_before = int(log_before.stdout.strip())
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(data_dir, "policies")
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post("/api/seed/policies", headers=auth_headers)
+
+        assert resp.status_code == 200
+
+        log_after = _run_git(["rev-list", "--count", "HEAD"], cwd=data_dir)
+        count_after = int(log_after.stdout.strip())
+        assert count_after == count_before + 1
+
+        log_msg = _run_git(["log", "-1", "--format=%s"], cwd=data_dir)
+        assert "policies" in log_msg.stdout.lower()
+
+    def test_records_agent_run(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+        store: PolicyStore,
+    ) -> None:
+        """An agent run record is created with the correct agent type."""
+        _populate_prerequisites(data_dir, "policies")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(data_dir, "policies")
+
+        with mock_agent_session_with_side_effect(mock_run):
+            resp = client.post("/api/seed/policies", headers=auth_headers)
+
+        assert resp.status_code == 200
+
+        runs = store.list_agent_runs(agent_type="policies-seed")
+        assert len(runs) == 1
+        assert runs[0].target_layer == "policies"
+        assert runs[0].success is True
+
+    def test_returns_error_on_agent_failure(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Returns failure response when the agent errors."""
+        _populate_prerequisites(data_dir, "policies")
+
+        mock_result = _make_mock_failing_agent_result()
+        with mock_agent_session(mock_result):
+            resp = client.post("/api/seed/policies", headers=auth_headers)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "failed" in data["message"].lower()
+
+    def test_does_not_trigger_cascade(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Policies seed does NOT trigger a cascade."""
+        _populate_prerequisites(data_dir, "policies")
+
+        def mock_run(prompt: str) -> AgentResult:
+            return _make_mock_upper_layer_agent_result(data_dir, "policies")
+
+        with mock_agent_session_with_side_effect(mock_run), patch(
+            "policy_factory.server.routers.seed.trigger_cascade",
+            new_callable=AsyncMock,
+        ) as mock_cascade:
+            resp = client.post("/api/seed/policies", headers=auth_headers)
+
+        assert resp.status_code == 200
+        mock_cascade.assert_not_called()
+
+    def test_fails_when_any_single_prerequisite_empty(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Fails when tactical is empty even if all other 3 prerequisites are populated."""
+        _populate_layer(data_dir, "values")
+        _populate_layer(data_dir, "situational-awareness")
+        _populate_layer(data_dir, "strategic-objectives")
+        # tactical-objectives deliberately not populated
+
+        resp = client.post("/api/seed/policies", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "tactical-objectives" in data["message"]
+
+    def test_prerequisite_failure_does_not_clear_items(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """When prerequisites fail, existing target items are preserved."""
+        _populate_layer(data_dir, "policies", count=3)
+
+        resp = client.post("/api/seed/policies", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+
+        items = list_items(data_dir, "policies")
+        assert len(items) == 3

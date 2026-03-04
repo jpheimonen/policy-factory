@@ -36,6 +36,26 @@ router = APIRouter(prefix="/api/heartbeat", tags=["heartbeat"])
 # ---------------------------------------------------------------------------
 
 
+def _try_import_cascade_trigger() -> Any | None:
+    """Return ``trigger_cascade`` if the cascade module is available."""
+    try:
+        from policy_factory.cascade.orchestrator import trigger_cascade
+
+        return trigger_cascade
+    except ImportError:
+        return None
+
+
+def _try_import_idea_generator() -> Any | None:
+    """Return ``generate_ideas`` if the ideas module is available."""
+    try:
+        from policy_factory.ideas.generator import generate_ideas
+
+        return generate_ideas
+    except ImportError:
+        return None
+
+
 @router.post("/trigger")
 async def trigger_heartbeat(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
@@ -48,34 +68,17 @@ async def trigger_heartbeat(
 
     Returns 409 if a heartbeat is already running.
     """
-    # Check concurrency guard
     if store.has_running_heartbeat():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A heartbeat is already running",
         )
 
-    # Get dependencies
     emitter = get_event_emitter()
     data_dir = get_data_dir()
+    cascade_trigger = _try_import_cascade_trigger()
+    idea_generator = _try_import_idea_generator()
 
-    # Import cascade trigger and idea generator
-    cascade_trigger = None
-    idea_generator = None
-
-    try:
-        from policy_factory.cascade.orchestrator import trigger_cascade
-        cascade_trigger = trigger_cascade
-    except ImportError:
-        pass
-
-    try:
-        from policy_factory.ideas.generator import generate_ideas
-        idea_generator = generate_ideas
-    except ImportError:
-        pass
-
-    # Import and launch orchestrator as background task
     from policy_factory.heartbeat.orchestrator import run_heartbeat
 
     async def _run() -> None:
@@ -109,13 +112,16 @@ async def get_heartbeat_history(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
     store: Annotated[PolicyStore, Depends(get_store)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[dict[str, Any]]:
     """Get recent heartbeat run history.
 
     Returns heartbeat runs in reverse chronological order with
     all fields including the full structured log.
+
+    Supports pagination via ``offset`` and ``limit`` query parameters.
     """
-    runs = store.list_heartbeat_runs(limit=limit)
+    runs = store.list_heartbeat_runs(limit=limit, offset=offset)
     return [_heartbeat_run_to_dict(run) for run in runs]
 
 
@@ -189,6 +195,47 @@ async def get_heartbeat_status(
         "next_run_time": next_run_time,
         "heartbeat_running": is_running,
         "latest_run": latest_summary,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/heartbeat/agent-run/{agent_run_id} — fetch a single agent run
+# ---------------------------------------------------------------------------
+
+
+@router.get("/agent-run/{agent_run_id}")
+async def get_agent_run(
+    agent_run_id: str,
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(get_store)],
+) -> dict[str, Any]:
+    """Fetch the full agent run record including output text.
+
+    Enables the heartbeat log viewer UI to load agent transcripts
+    on demand when a user expands a tier entry.
+    """
+    agent_run = store.get_agent_run(agent_run_id)
+    if agent_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent run not found: {agent_run_id}",
+        )
+
+    return {
+        "id": agent_run.id,
+        "cascade_id": agent_run.cascade_id,
+        "agent_type": agent_run.agent_type,
+        "agent_label": agent_run.agent_label,
+        "model": agent_run.model,
+        "target_layer": agent_run.target_layer,
+        "started_at": agent_run.started_at.isoformat(),
+        "completed_at": (
+            agent_run.completed_at.isoformat() if agent_run.completed_at else None
+        ),
+        "success": agent_run.success,
+        "error_message": agent_run.error_message,
+        "cost_usd": agent_run.cost_usd,
+        "output_text": agent_run.output_text,
     }
 
 

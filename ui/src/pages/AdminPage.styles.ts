@@ -218,3 +218,37 @@ export const StatusActions = styled.div`
   gap: ${({ theme }) => theme.spacing.sm};
   margin-top: ${({ theme }) => theme.spacing.xs};
 `;
+
+// ── Per-layer seed row ────────────────────────────────────────────────
+
+export const LayerRow = styled.div<{ $isLast?: boolean }>`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: ${({ theme }) => theme.spacing.md};
+  padding: ${({ theme }) => theme.spacing.sm} 0;
+  border-bottom: ${({ theme, $isLast }) =>
+    $isLast ? "none" : `1px solid ${theme.colors.border.subtle}`};
+`;
+
+export const LayerInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
+  min-width: 0;
+`;
+
+export const LayerName = styled.span`
+  font-family: ${({ theme }) => theme.fonts.sans};
+  font-size: ${({ theme }) => theme.fontSizes.sm};
+  font-weight: 500;
+  color: ${({ theme }) => theme.colors.text.primary};
+  white-space: nowrap;
+`;
+
+export const LayerCount = styled.span`
+  font-family: ${({ theme }) => theme.fonts.sans};
+  font-size: ${({ theme }) => theme.fontSizes.sm};
+  color: ${({ theme }) => theme.colors.text.muted};
+  white-space: nowrap;
+`;

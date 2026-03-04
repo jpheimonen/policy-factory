@@ -497,6 +497,53 @@ class TestAgentRunCRUD:
         assert run is not None
         assert run.output_text == full_output
 
+    def test_create_agent_run_with_none_model(self, store: PolicyStore) -> None:
+        """Creating an agent run with model=None succeeds (CLI-default roles)."""
+        run_id = store.create_agent_run(
+            cascade_id=None,
+            agent_type="strategic-seed",
+            agent_label="Strategic objectives seed",
+            model=None,
+            target_layer="strategic-objectives",
+        )
+
+        run = store.get_agent_run(run_id)
+        assert run is not None
+        assert run.id == run_id
+        assert run.agent_type == "strategic-seed"
+        assert run.model is None
+        assert run.target_layer == "strategic-objectives"
+
+    def test_agent_run_with_none_model_round_trips(self, store: PolicyStore) -> None:
+        """An agent run created with model=None can be retrieved with model=None."""
+        run_id = store.create_agent_run(
+            cascade_id=None,
+            agent_type="tactical-seed",
+            agent_label="Tactical objectives seed",
+            model=None,
+        )
+        store.complete_agent_run(run_id, success=True, cost=0.10)
+
+        run = store.get_agent_run(run_id)
+        assert run is not None
+        assert run.model is None
+        assert run.success is True
+        assert run.cost_usd == pytest.approx(0.10)
+
+    def test_agent_run_with_string_model_still_works(self, store: PolicyStore) -> None:
+        """Existing agent runs with string model values still work after the type change."""
+        run_id = store.create_agent_run(
+            cascade_id="c1",
+            agent_type="generator",
+            agent_label="Generator",
+            model="claude-opus-4-0-20250514",
+            target_layer="values",
+        )
+
+        run = store.get_agent_run(run_id)
+        assert run is not None
+        assert run.model == "claude-opus-4-0-20250514"
+
 
 class TestSchemaInitialization:
     """Tests for schema initialization of cascade and agent run tables."""
