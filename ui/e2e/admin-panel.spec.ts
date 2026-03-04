@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { setupAndLogin, getAdminToken } from "./helpers";
+import { setupAndLogin, getAdminToken, TEST_ADMIN_EMAIL } from "./helpers";
 
 /**
  * E2E tests for the admin panel.
@@ -21,7 +21,7 @@ test.describe("Admin Panel", () => {
     await page.goto("/admin");
 
     // Should show the admin user in the list
-    await expect(page.getByText("admin@test.com").first()).toBeVisible();
+    await expect(page.getByText(TEST_ADMIN_EMAIL).first()).toBeVisible();
   });
 
   test("admin can create user", async ({ page }) => {
@@ -54,7 +54,7 @@ test.describe("Admin Panel", () => {
 
     // The delete button for the admin's own account should be disabled
     // or should show an error if clicked
-    const adminRow = page.getByText("admin@test.com").first();
+    const adminRow = page.getByText(TEST_ADMIN_EMAIL).first();
     await expect(adminRow).toBeVisible();
   });
 });

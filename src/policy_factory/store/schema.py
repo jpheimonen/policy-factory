@@ -191,6 +191,11 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     """
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # Use autocommit mode (isolation_level=None) so the connection does not
+    # hold implicit transactions between explicit commit() calls.  This avoids
+    # long-lived RESERVED locks that block external writers (e.g. E2E test
+    # setup scripts that need to clear the database).
+    conn.isolation_level = None
     conn.executescript(SCHEMA)
     conn.execute("PRAGMA journal_mode=WAL")
 

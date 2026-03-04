@@ -39,12 +39,12 @@ export default function globalSetup() {
 
   const pythonScript = `
 import sqlite3, sys
-conn = sqlite3.connect("${DB_PATH}")
+conn = sqlite3.connect("${DB_PATH}", timeout=10)
 c = conn.cursor()
 ${deleteStatements}
 conn.commit()
 conn.close()
 `.trim();
 
-  execSync(`python3 -c '${pythonScript}'`, { stdio: "pipe" });
+  execSync(`python3 -c '${pythonScript}'`, { stdio: "pipe", timeout: 15000 });
 }

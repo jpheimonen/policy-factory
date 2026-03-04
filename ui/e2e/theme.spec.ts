@@ -21,9 +21,9 @@ test.describe("Theme Switching", () => {
   test("theme toggle changes appearance", async ({ page }) => {
     await setupAndLogin(page);
 
-    // Find theme toggle button
+    // Find theme toggle button by its title attribute
     const themeToggle = page.getByRole("button", {
-      name: /theme|dark|light|mode/i,
+      name: /switch to (dark|light) mode/i,
     });
 
     if (await themeToggle.isVisible()) {
@@ -49,7 +49,7 @@ test.describe("Theme Switching", () => {
 
     // Toggle theme if available
     const themeToggle = page.getByRole("button", {
-      name: /theme|dark|light|mode/i,
+      name: /switch to (dark|light) mode/i,
     });
 
     if (await themeToggle.isVisible()) {
