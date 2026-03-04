@@ -158,7 +158,7 @@ def gather_context_below(
     from policy_factory.cascade.orchestrator import layers_below
     from policy_factory.data.layers import LAYERS
 
-    _layer_by_slug = {layer.slug: layer for layer in LAYERS}
+    layer_by_slug = {layer.slug: layer for layer in LAYERS}
 
     below = layers_below(layer_slug)  # raises ValueError for invalid slug
     if not below:
@@ -167,7 +167,7 @@ def gather_context_below(
     parts: list[str] = []
 
     for below_slug in below:
-        layer_info = _layer_by_slug[below_slug]
+        layer_info = layer_by_slug[below_slug]
         layer_display = layer_info.display_name
         parts.append(f"## {layer_display} Layer\n")
 
@@ -221,7 +221,7 @@ def check_prerequisites(
     empty_layers: list[str] = []
     for below_slug in below:
         items = list_items(data_dir, below_slug)
-        if len(items) == 0:
+        if not items:
             empty_layers.append(below_slug)
 
     return empty_layers

@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from policy_factory.cascade.content import check_prerequisites, gather_context_below
 from policy_factory.cascade.orchestrator import trigger_cascade
 from policy_factory.data.git import commit_changes
-from policy_factory.data.layers import LAYERS, delete_item, list_items, write_item
+from policy_factory.data.layers import LAYERS, delete_item, list_items, read_item, write_item
 from policy_factory.server.deps import (
     get_current_user,
     get_data_dir,
@@ -215,6 +215,88 @@ def _parse_values_output(output: str) -> list[tuple[dict, str]]:
 
 
 # ---------------------------------------------------------------------------
+# Helper: run a seed agent with tracking
+# ---------------------------------------------------------------------------
+
+
+async def _run_seed_agent(
+    *,
+    prompt: str,
+    agent_role: str,
+    agent_label: str,
+    target_layer: str,
+) -> tuple[object | None, str | None]:
+    """Execute a seed agent and record the run in the store.
+
+    Handles the full agent lifecycle: resolve model, create config,
+    record the agent run, execute, and record completion.  This
+    eliminates the duplicated try/except/complete_agent_run boilerplate
+    from each seed endpoint.
+
+    Args:
+        prompt: The fully-assembled prompt string.
+        agent_role: Agent role key (e.g. ``"values-seed"``).
+        agent_label: Human-readable label for logging/display.
+        target_layer: Layer slug being seeded.
+
+    Returns:
+        A tuple of ``(result, error_message)``.  On success,
+        ``result`` is the ``AgentResult`` and ``error_message`` is
+        ``None``.  On failure, ``result`` is ``None`` and
+        ``error_message`` describes the failure.
+    """
+    from policy_factory.agent.config import AgentConfig, resolve_model
+    from policy_factory.agent.session import AgentSession
+
+    store = get_store()
+    emitter = get_event_emitter()
+    data_dir = get_data_dir()
+
+    model = resolve_model(agent_role)
+    config = AgentConfig(model=model, role=agent_role)
+
+    agent_run_id = store.create_agent_run(
+        cascade_id=None,
+        agent_type=agent_role,
+        agent_label=agent_label,
+        model=model,
+        target_layer=target_layer,
+    )
+
+    session = AgentSession(
+        config=config,
+        emitter=emitter,
+        context_id=agent_role,
+        agent_label=agent_label,
+        data_dir=data_dir,
+    )
+
+    try:
+        result = await session.run(prompt)
+
+        store.complete_agent_run(
+            agent_run_id,
+            success=not result.is_error,
+            error_message=result.result_text if result.is_error else None,
+            cost=result.total_cost_usd,
+            output_text=result.full_output,
+        )
+
+        if result.is_error:
+            return None, f"{agent_label} failed: {result.result_text}"
+
+        return result, None
+
+    except Exception as exc:
+        store.complete_agent_run(
+            agent_run_id,
+            success=False,
+            error_message=str(exc),
+        )
+        return None, f"{agent_label} error: {exc}"
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -235,73 +317,20 @@ async def seed_values(
     Returns:
         ValuesSeedResponse with success status and count of values created.
     """
-    store = get_store()
-    emitter = get_event_emitter()
     data_dir = get_data_dir()
 
-    # Import agent framework lazily
-    from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
-    from policy_factory.agent.session import AgentSession
 
-    # Resolve values-seed model
-    model = resolve_model("values-seed")
-
-    # Build the values seed prompt
     prompt = build_agent_prompt("seed", "values")
 
-    # Create agent config
-    config = AgentConfig(
-        model=model,
-        role="values-seed",
-    )
-
-    # Record agent run
-    agent_label = "Values layer seed agent"
-    agent_run_id = store.create_agent_run(
-        cascade_id=None,
-        agent_type="values-seed",
-        agent_label=agent_label,
-        model=model,
+    result, error_msg = await _run_seed_agent(
+        prompt=prompt,
+        agent_role="values-seed",
+        agent_label="Values layer seed agent",
         target_layer="values",
     )
-
-    # Run the values seed agent
-    session = AgentSession(
-        config=config,
-        emitter=emitter,
-        context_id="values-seed",
-        agent_label=agent_label,
-        data_dir=data_dir,
-    )
-
-    try:
-        result = await session.run(prompt)
-
-        store.complete_agent_run(
-            agent_run_id,
-            success=not result.is_error,
-            error_message=result.result_text if result.is_error else None,
-            cost=result.total_cost_usd,
-            output_text=result.full_output,
-        )
-
-        if result.is_error:
-            return ValuesSeedResponse(
-                success=False,
-                message=f"Values seed agent failed: {result.result_text}",
-            )
-
-    except Exception as exc:
-        store.complete_agent_run(
-            agent_run_id,
-            success=False,
-            error_message=str(exc),
-        )
-        return ValuesSeedResponse(
-            success=False,
-            message=f"Values seed agent error: {exc}",
-        )
+    if error_msg is not None:
+        return ValuesSeedResponse(success=False, message=error_msg)
 
     # Parse the agent output to extract individual value documents
     parsed_values = _parse_values_output(result.full_output)
@@ -400,17 +429,13 @@ async def trigger_seed(
         except Exception:
             logger.warning("Failed to delete existing SA item %s", item.filename)
 
-    # Import agent framework lazily
-    from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
-    from policy_factory.agent.session import AgentSession
 
     # Read values layer content as context
     values_items = list_items(data_dir, "values")
     values_content_parts: list[str] = []
     for item in values_items:
         try:
-            from policy_factory.data.layers import read_item
             fm, body = read_item(data_dir, "values", item.filename)
             title = fm.get("title", item.filename)
             values_content_parts.append(f"### {title}\n{body}")
@@ -422,9 +447,6 @@ async def trigger_seed(
         if values_content_parts
         else "(no values content)"
     )
-
-    # Resolve seed model
-    model = resolve_model("seed")
 
     # Build seed prompt
     current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -446,58 +468,14 @@ async def trigger_seed(
         )
         prompt = context_section + prompt
 
-    # Create agent config
-    config = AgentConfig(
-        model=model,
-        role="seed",
-    )
-
-    # Record agent run
-    agent_label = "Situational Awareness seed agent"
-    agent_run_id = store.create_agent_run(
-        cascade_id=None,
-        agent_type="seed",
-        agent_label=agent_label,
-        model=model,
+    result, error_msg = await _run_seed_agent(
+        prompt=prompt,
+        agent_role="seed",
+        agent_label="Situational Awareness seed agent",
         target_layer="situational-awareness",
     )
-
-    # Run the seed agent
-    session = AgentSession(
-        config=config,
-        emitter=emitter,
-        context_id="seed",
-        agent_label=agent_label,
-        data_dir=data_dir,
-    )
-
-    try:
-        result = await session.run(prompt)
-
-        store.complete_agent_run(
-            agent_run_id,
-            success=not result.is_error,
-            error_message=result.result_text if result.is_error else None,
-            cost=result.total_cost_usd,
-            output_text=result.full_output,
-        )
-
-        if result.is_error:
-            return SeedResponse(
-                success=False,
-                message=f"Seed agent failed: {result.result_text}",
-            )
-
-    except Exception as exc:
-        store.complete_agent_run(
-            agent_run_id,
-            success=False,
-            error_message=str(exc),
-        )
-        return SeedResponse(
-            success=False,
-            message=f"Seed agent error: {exc}",
-        )
+    if error_msg is not None:
+        return SeedResponse(success=False, message=error_msg)
 
     # Auto-commit the seeded content
     try:
@@ -583,8 +561,6 @@ async def _seed_upper_layer(
     Returns:
         SeedResponse with success/failure status and message.
     """
-    store = get_store()
-    emitter = get_event_emitter()
     data_dir = get_data_dir()
 
     # 1. Validate prerequisites — all layers below must have items
@@ -613,10 +589,7 @@ async def _seed_upper_layer(
     # 3. Gather context from all layers below
     context_below = gather_context_below(data_dir, layer_slug)
 
-    # Import agent framework lazily
-    from policy_factory.agent.config import AgentConfig, resolve_model
     from policy_factory.agent.prompts import build_agent_prompt
-    from policy_factory.agent.session import AgentSession
 
     # 4. Build the prompt
     current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -627,62 +600,17 @@ async def _seed_upper_layer(
         context_below=context_below,
     )
 
-    # Resolve model for this role
-    model = resolve_model(agent_role)
-
-    # Create agent config
-    config = AgentConfig(
-        model=model,
-        role=agent_role,
-    )
-
-    # 5. Record agent run
-    agent_run_id = store.create_agent_run(
-        cascade_id=None,
-        agent_type=agent_role,
+    # 5. Execute the seed agent
+    result, error_msg = await _run_seed_agent(
+        prompt=prompt,
+        agent_role=agent_role,
         agent_label=agent_label,
-        model=model,
         target_layer=layer_slug,
     )
+    if error_msg is not None:
+        return SeedResponse(success=False, message=error_msg)
 
-    # 6. Execute the agent
-    session = AgentSession(
-        config=config,
-        emitter=emitter,
-        context_id=agent_role,
-        agent_label=agent_label,
-        data_dir=data_dir,
-    )
-
-    try:
-        result = await session.run(prompt)
-
-        store.complete_agent_run(
-            agent_run_id,
-            success=not result.is_error,
-            error_message=result.result_text if result.is_error else None,
-            cost=result.total_cost_usd,
-            output_text=result.full_output,
-        )
-
-        if result.is_error:
-            return SeedResponse(
-                success=False,
-                message=f"{agent_label} failed: {result.result_text}",
-            )
-
-    except Exception as exc:
-        store.complete_agent_run(
-            agent_run_id,
-            success=False,
-            error_message=str(exc),
-        )
-        return SeedResponse(
-            success=False,
-            message=f"{agent_label} error: {exc}",
-        )
-
-    # 7. Commit to git
+    # 6. Commit to git
     try:
         commit_changes(data_dir, f"Seed {layer_slug} layer")
     except Exception:
@@ -690,7 +618,7 @@ async def _seed_upper_layer(
             "Git commit failed after %s seeding", layer_slug, exc_info=True
         )
 
-    # 8. Return success (no cascade_id — upper seeds don't trigger cascades)
+    # 7. Return success (no cascade_id — upper seeds don't trigger cascades)
     return SeedResponse(
         success=True,
         message=f"{layer_slug} layer seeded successfully.",
