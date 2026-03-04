@@ -8,9 +8,17 @@
 
 import { expect, Page } from "@playwright/test";
 
-/** Shared test admin credentials (used by every E2E test file). */
-export const TEST_ADMIN_EMAIL = "admin@test.com";
-export const TEST_ADMIN_PASSWORD = "password123";
+/**
+ * Shared test admin credentials (used by every E2E test file).
+ *
+ * Reads from POLICY_FACTORY_ADMIN_EMAIL / POLICY_FACTORY_ADMIN_PASSWORD
+ * so E2E tests use the same credentials as the running server.
+ * Falls back to admin@admin.com / admin (matching the server defaults).
+ */
+export const TEST_ADMIN_EMAIL =
+  process.env.POLICY_FACTORY_ADMIN_EMAIL || "admin@admin.com";
+export const TEST_ADMIN_PASSWORD =
+  process.env.POLICY_FACTORY_ADMIN_PASSWORD || "admin";
 
 /**
  * Register the first admin user (if no users exist) and log in.
