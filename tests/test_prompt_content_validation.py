@@ -80,6 +80,18 @@ _TEMPLATE_VARS: dict[tuple[str, str], dict[str, str]] = {
         "current_date": "2025-01-01",
         "values_content": "test values content",
     },
+    ("seed", "strategic"): {
+        "current_date": "2025-01-01",
+        "context_below": "test context below",
+    },
+    ("seed", "tactical"): {
+        "current_date": "2025-01-01",
+        "context_below": "test context below",
+    },
+    ("seed", "policies"): {
+        "current_date": "2025-01-01",
+        "context_below": "test context below",
+    },
     # Generators
     ("generators", "values"): {
         "layer_content": "test layer content",
