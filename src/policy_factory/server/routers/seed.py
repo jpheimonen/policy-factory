@@ -26,7 +26,7 @@ from pydantic import BaseModel
 
 from policy_factory.cascade.orchestrator import trigger_cascade
 from policy_factory.data.git import commit_changes
-from policy_factory.data.layers import delete_item, list_items, write_item
+from policy_factory.data.layers import LAYERS, delete_item, list_items, write_item
 from policy_factory.server.deps import (
     get_current_user,
     get_data_dir,
@@ -53,24 +53,33 @@ class SeedResponse(BaseModel):
     message: str = ""
 
 
+class LayerStatusEntry(BaseModel):
+    """Status of a single layer in the policy stack.
+
+    Attributes:
+        slug: Layer identifier (e.g. ``"values"``, ``"situational-awareness"``).
+        display_name: Human-readable layer name (e.g. ``"Situational Awareness"``).
+        seeded: Whether the layer has at least one item.
+        count: Number of items in the layer.
+    """
+
+    slug: str
+    display_name: str
+    seeded: bool
+    count: int = 0
+
+
 class SeedStatusResponse(BaseModel):
     """Response for the seed status endpoint.
 
-    Reports the seeding status of both foundational layers (values and
-    situational awareness). The UI can use this to display whether each
-    layer has been seeded and how many items each contains.
+    Reports the seeding status of all 5 layers in the policy stack,
+    ordered hierarchically from bottom (values) to top (policies).
 
     Attributes:
-        values_seeded: Whether the values layer has any items.
-        values_count: Number of items in the values layer.
-        sa_seeded: Whether the situational awareness layer has any items.
-        sa_count: Number of items in the situational awareness layer.
+        layers: List of per-layer status entries.
     """
 
-    values_seeded: bool
-    values_count: int = 0
-    sa_seeded: bool
-    sa_count: int = 0
+    layers: list[LayerStatusEntry]
 
 
 class SeedRequest(BaseModel):
@@ -515,30 +524,28 @@ async def trigger_seed(
 async def get_seed_status(
     _current_user: Annotated[UserPublic, Depends(get_current_user)],
 ) -> SeedStatusResponse:
-    """Check the seeding status of both values and SA layers.
+    """Check the seeding status of all 5 policy layers.
 
-    Returns the count and seeded status for both foundational layers:
-    - Values layer: Contains axiomatic Finnish policy values
-    - Situational Awareness layer: Contains current tech policy landscape
+    Returns a list of layer status entries ordered hierarchically from
+    bottom (values) to top (policies). Each entry reports the layer slug,
+    display name, whether it has been seeded, and the item count.
 
     Returns:
-        SeedStatusResponse with counts and seeded flags for both layers.
+        SeedStatusResponse with a list of per-layer status entries.
     """
     data_dir = get_data_dir()
 
-    # Check values layer
-    values_items = list_items(data_dir, "values")
-    values_count = len(values_items)
-    values_seeded = values_count > 0
+    entries: list[LayerStatusEntry] = []
+    for layer in LAYERS:
+        items = list_items(data_dir, layer.slug)
+        count = len(items)
+        entries.append(
+            LayerStatusEntry(
+                slug=layer.slug,
+                display_name=layer.display_name,
+                seeded=count > 0,
+                count=count,
+            )
+        )
 
-    # Check SA layer
-    sa_items = list_items(data_dir, "situational-awareness")
-    sa_count = len(sa_items)
-    sa_seeded = sa_count > 0
-
-    return SeedStatusResponse(
-        values_seeded=values_seeded,
-        values_count=values_count,
-        sa_seeded=sa_seeded,
-        sa_count=sa_count,
-    )
+    return SeedStatusResponse(layers=entries)

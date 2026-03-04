@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import policy_factory.auth as auth_mod
 from policy_factory.agent.session import AgentResult
 from policy_factory.auth import create_access_token, hash_password
-from policy_factory.data.layers import LAYER_SLUGS
+from policy_factory.data.layers import LAYER_SLUGS, LAYERS
 from policy_factory.events import EventEmitter
 from policy_factory.server.app import create_app
 from policy_factory.store import PolicyStore
@@ -70,6 +70,19 @@ def auth_headers(store: PolicyStore) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_layer(layers: list[dict], slug: str) -> dict:
+    """Find a layer entry by slug in the response layers list."""
+    for entry in layers:
+        if entry["slug"] == slug:
+            return entry
+    raise AssertionError(f"Layer {slug!r} not found in response")
+
+
+# ---------------------------------------------------------------------------
 # Seed status tests
 # ---------------------------------------------------------------------------
 
@@ -84,16 +97,15 @@ class TestSeedStatus:
     def test_returns_not_seeded_for_empty_layers(
         self, client: TestClient, auth_headers: dict[str, str]
     ) -> None:
-        """Status shows both layers as not seeded when empty."""
+        """Status shows all layers as not seeded when empty."""
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
-        # Values layer
-        assert data["values_seeded"] is False
-        assert data["values_count"] == 0
-        # SA layer
-        assert data["sa_seeded"] is False
-        assert data["sa_count"] == 0
+        layers = data["layers"]
+        assert len(layers) == 5
+        for entry in layers:
+            assert entry["seeded"] is False
+            assert entry["count"] == 0
 
     def test_returns_values_seeded_when_values_has_items(
         self,
@@ -112,12 +124,20 @@ class TestSeedStatus:
         )
 
         resp = client.get("/api/seed/status", headers=auth_headers)
-        data = resp.json()
-        assert data["values_seeded"] is True
-        assert data["values_count"] == 2
-        # SA still empty
-        assert data["sa_seeded"] is False
-        assert data["sa_count"] == 0
+        layers = resp.json()["layers"]
+
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is True
+        assert values["count"] == 2
+
+        # SA and upper layers still empty
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is False
+        assert sa["count"] == 0
+
+        for slug in ("strategic-objectives", "tactical-objectives", "policies"):
+            entry = _find_layer(layers, slug)
+            assert entry["seeded"] is False
 
     def test_returns_sa_seeded_when_sa_has_items(
         self,
@@ -133,13 +153,17 @@ class TestSeedStatus:
         )
 
         resp = client.get("/api/seed/status", headers=auth_headers)
-        data = resp.json()
+        layers = resp.json()["layers"]
+
         # Values still empty
-        assert data["values_seeded"] is False
-        assert data["values_count"] == 0
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is False
+        assert values["count"] == 0
+
         # SA has items
-        assert data["sa_seeded"] is True
-        assert data["sa_count"] == 1
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is True
+        assert sa["count"] == 1
 
     def test_returns_both_seeded_when_both_have_items(
         self,
@@ -164,11 +188,81 @@ class TestSeedStatus:
         )
 
         resp = client.get("/api/seed/status", headers=auth_headers)
-        data = resp.json()
-        assert data["values_seeded"] is True
-        assert data["values_count"] == 1
-        assert data["sa_seeded"] is True
-        assert data["sa_count"] == 2
+        layers = resp.json()["layers"]
+
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is True
+        assert values["count"] == 1
+
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is True
+        assert sa["count"] == 2
+
+    def test_response_contains_exactly_five_layers_in_order(
+        self, client: TestClient, auth_headers: dict[str, str]
+    ) -> None:
+        """Response contains exactly 5 layers in canonical order."""
+        resp = client.get("/api/seed/status", headers=auth_headers)
+        assert resp.status_code == 200
+        layers = resp.json()["layers"]
+        assert len(layers) == 5
+        expected_slugs = [
+            "values",
+            "situational-awareness",
+            "strategic-objectives",
+            "tactical-objectives",
+            "policies",
+        ]
+        actual_slugs = [entry["slug"] for entry in layers]
+        assert actual_slugs == expected_slugs
+
+    def test_layer_entries_include_display_names(
+        self, client: TestClient, auth_headers: dict[str, str]
+    ) -> None:
+        """Each entry has a display_name matching the canonical LAYERS definition."""
+        resp = client.get("/api/seed/status", headers=auth_headers)
+        layers = resp.json()["layers"]
+        for layer_info in LAYERS:
+            entry = _find_layer(layers, layer_info.slug)
+            assert entry["display_name"] == layer_info.display_name
+
+    def test_upper_layers_reflect_items_when_populated(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        data_dir: Path,
+    ) -> None:
+        """Upper layers correctly report items when populated on disk."""
+        # Write items to strategic-objectives
+        so_dir = data_dir / "strategic-objectives"
+        (so_dir / "obj1.md").write_text(
+            "---\ntitle: Strategic Obj 1\n---\nContent"
+        )
+        (so_dir / "obj2.md").write_text(
+            "---\ntitle: Strategic Obj 2\n---\nContent"
+        )
+
+        # Write items to policies
+        pol_dir = data_dir / "policies"
+        (pol_dir / "policy1.md").write_text(
+            "---\ntitle: Policy 1\n---\nContent"
+        )
+
+        resp = client.get("/api/seed/status", headers=auth_headers)
+        layers = resp.json()["layers"]
+
+        so = _find_layer(layers, "strategic-objectives")
+        assert so["seeded"] is True
+        assert so["count"] == 2
+
+        pol = _find_layer(layers, "policies")
+        assert pol["seeded"] is True
+        assert pol["count"] == 1
+
+        # tactical-objectives still empty
+        to = _find_layer(layers, "tactical-objectives")
+        assert to["seeded"] is False
+        assert to["count"] == 0
 
 
 # ---------------------------------------------------------------------------

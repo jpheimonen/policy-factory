@@ -22,7 +22,7 @@ from policy_factory.agent.session import AgentResult
 from policy_factory.auth import create_access_token, hash_password
 from policy_factory.data.git import _run_git, is_git_repo
 from policy_factory.data.init import initialize_data_directory
-from policy_factory.data.layers import LAYER_SLUGS, list_items
+from policy_factory.data.layers import LAYER_SLUGS, LAYERS, list_items
 from policy_factory.events import EventEmitter
 from policy_factory.server.app import create_app
 from policy_factory.server.ws import ConnectionManager
@@ -582,6 +582,19 @@ class TestSASeedingFlow:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_layer(layers: list[dict], slug: str) -> dict:
+    """Find a layer entry by slug in the response layers list."""
+    for entry in layers:
+        if entry["slug"] == slug:
+            return entry
+    raise AssertionError(f"Layer {slug!r} not found in response")
+
+
+# ---------------------------------------------------------------------------
 # Seed Status Tests
 # ---------------------------------------------------------------------------
 
@@ -602,13 +615,13 @@ class TestSeedStatusEndpoint:
         """Status correctly reflects empty layers after initialization."""
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        layers = resp.json()["layers"]
 
-        # Both layers should be empty
-        assert data["values_seeded"] is False
-        assert data["values_count"] == 0
-        assert data["sa_seeded"] is False
-        assert data["sa_count"] == 0
+        # All 5 layers should be empty
+        assert len(layers) == 5
+        for entry in layers:
+            assert entry["seeded"] is False
+            assert entry["count"] == 0
 
     def test_status_reflects_populated_values(
         self,
@@ -624,12 +637,15 @@ class TestSeedStatusEndpoint:
 
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        layers = resp.json()["layers"]
 
-        assert data["values_seeded"] is True
-        assert data["values_count"] == 2
-        assert data["sa_seeded"] is False
-        assert data["sa_count"] == 0
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is True
+        assert values["count"] == 2
+
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is False
+        assert sa["count"] == 0
 
     def test_status_reflects_populated_sa(
         self,
@@ -646,12 +662,15 @@ class TestSeedStatusEndpoint:
 
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        layers = resp.json()["layers"]
 
-        assert data["values_seeded"] is False
-        assert data["values_count"] == 0
-        assert data["sa_seeded"] is True
-        assert data["sa_count"] == 3
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is False
+        assert values["count"] == 0
+
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is True
+        assert sa["count"] == 3
 
     def test_status_returns_correct_counts_for_both_layers(
         self,
@@ -671,12 +690,29 @@ class TestSeedStatusEndpoint:
 
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        layers = resp.json()["layers"]
 
-        assert data["values_seeded"] is True
-        assert data["values_count"] == 1
-        assert data["sa_seeded"] is True
-        assert data["sa_count"] == 2
+        values = _find_layer(layers, "values")
+        assert values["seeded"] is True
+        assert values["count"] == 1
+
+        sa = _find_layer(layers, "situational-awareness")
+        assert sa["seeded"] is True
+        assert sa["count"] == 2
+
+    def test_status_includes_all_five_layers(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Response contains exactly 5 layer entries with correct slugs."""
+        resp = client.get("/api/seed/status", headers=auth_headers)
+        assert resp.status_code == 200
+        layers = resp.json()["layers"]
+        assert len(layers) == 5
+        expected_slugs = [layer.slug for layer in LAYERS]
+        actual_slugs = [entry["slug"] for entry in layers]
+        assert actual_slugs == expected_slugs
 
 
 # ---------------------------------------------------------------------------
