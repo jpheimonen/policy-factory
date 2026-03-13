@@ -203,7 +203,11 @@ async def register(
 
     # Validate inputs
     validate_email(body.email)
-    validate_password(body.password)
+    if not is_first_user:
+        # First-user (admin setup) can choose any password — they own the
+        # instance and may be using env-var defaults.  Subsequent users
+        # created by admins must meet the minimum-length requirement.
+        validate_password(body.password)
 
     # Check for duplicate email
     if store.email_exists(body.email):

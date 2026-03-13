@@ -25,6 +25,10 @@ AgentType = Literal[
     "idea-evaluator",
     "idea-generator",
     "seed",
+    "values-seed",
+    "strategic-seed",
+    "tactical-seed",
+    "policies-seed",
 ]
 
 
@@ -36,7 +40,7 @@ class AgentRun:
     cascade_id: str | None
     agent_type: str
     agent_label: str
-    model: str
+    model: str | None
     target_layer: str | None
     started_at: datetime
     completed_at: datetime | None
@@ -60,7 +64,7 @@ class AgentRunStoreMixin:
         cascade_id: str | None,
         agent_type: str,
         agent_label: str,
-        model: str,
+        model: str | None,
         target_layer: str | None = None,
     ) -> str:
         """Create an agent run record with the started timestamp.
@@ -69,7 +73,8 @@ class AgentRunStoreMixin:
             cascade_id: Optional cascade ID (None for runs outside cascades).
             agent_type: The agent type string (e.g. "generator", "critic").
             agent_label: Human-readable label (e.g. "Values layer generator").
-            model: The model name used for this run.
+            model: The model name used for this run, or None for
+                CLI-default roles where the model is not known at call time.
             target_layer: Optional target layer slug.
 
         Returns:

@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     cascade_id TEXT,
     agent_type TEXT NOT NULL,
     agent_label TEXT NOT NULL,
-    model TEXT NOT NULL,
+    model TEXT,
     target_layer TEXT,
     started_at TEXT NOT NULL,
     completed_at TEXT,
@@ -191,15 +191,42 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     """
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # Use autocommit mode (isolation_level=None) so the connection does not
+    # hold implicit transactions between explicit commit() calls.  This avoids
+    # long-lived RESERVED locks that block external writers (e.g. E2E test
+    # setup scripts that need to clear the database).
+    conn.isolation_level = None
     conn.executescript(SCHEMA)
     conn.execute("PRAGMA journal_mode=WAL")
 
-    # Future migrations go here, following the cc-runner pattern:
-    # try:
-    #     conn.execute("SELECT new_column FROM table LIMIT 1")
-    # except sqlite3.OperationalError:
-    #     conn.execute("ALTER TABLE table ADD COLUMN new_column TEXT")
-    #     conn.commit()
+    # --- Migrations ---
+
+    # Migration: allow NULL in agent_runs.model column.
+    # SQLite cannot ALTER COLUMN to remove NOT NULL, so we check the schema
+    # and recreate the table if needed.
+    schema_row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='agent_runs'"
+    ).fetchone()
+    if schema_row and "model TEXT NOT NULL" in schema_row["sql"]:
+        conn.executescript("""
+            ALTER TABLE agent_runs RENAME TO _agent_runs_old;
+            CREATE TABLE agent_runs (
+                id TEXT PRIMARY KEY,
+                cascade_id TEXT,
+                agent_type TEXT NOT NULL,
+                agent_label TEXT NOT NULL,
+                model TEXT,
+                target_layer TEXT,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                success INTEGER,
+                error_message TEXT,
+                cost_usd REAL,
+                output_text TEXT
+            );
+            INSERT INTO agent_runs SELECT * FROM _agent_runs_old;
+            DROP TABLE _agent_runs_old;
+        """)
 
     return conn
 

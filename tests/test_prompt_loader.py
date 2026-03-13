@@ -29,8 +29,8 @@ def tmp_prompts(tmp_path: Path) -> Path:
 
     # Create sections directory
     (tmp_path / "sections").mkdir()
-    (tmp_path / "sections" / "meditation.md").write_text(
-        "Count down from 10 to 1."
+    (tmp_path / "sections" / "anti-slop.md").write_text(
+        "Anti-slop preamble content."
     )
     (tmp_path / "sections" / "core.md").write_text(
         "Core section content."
@@ -93,8 +93,8 @@ class TestPromptLoaderLoadSection:
     """Tests for PromptLoader.load_section()."""
 
     def test_load_section_returns_content(self, loader: PromptLoader) -> None:
-        result = loader.load_section("meditation")
-        assert result == "Count down from 10 to 1."
+        result = loader.load_section("anti-slop")
+        assert result == "Anti-slop preamble content."
 
     def test_load_section_nonexistent_raises_file_not_found(self, loader: PromptLoader) -> None:
         with pytest.raises(FileNotFoundError, match="Prompt section not found"):
@@ -110,28 +110,28 @@ class TestPromptLoaderLoadSections:
     """Tests for PromptLoader.load_sections()."""
 
     def test_load_sections_concatenates_with_double_newlines(self, loader: PromptLoader) -> None:
-        result = loader.load_sections(["meditation", "core"])
-        assert "Count down from 10 to 1." in result
+        result = loader.load_sections(["anti-slop", "core"])
+        assert "Anti-slop preamble content." in result
         assert "Core section content." in result
         assert "\n\n" in result
 
     def test_load_sections_preserves_order(self, loader: PromptLoader) -> None:
-        result = loader.load_sections(["meditation", "core"])
-        med_idx = result.index("Count down")
+        result = loader.load_sections(["anti-slop", "core"])
+        slop_idx = result.index("Anti-slop")
         core_idx = result.index("Core section")
-        assert med_idx < core_idx
+        assert slop_idx < core_idx
 
     def test_load_sections_empty_list_returns_empty_string(self, loader: PromptLoader) -> None:
         result = loader.load_sections([])
         assert result == ""
 
     def test_load_sections_single_item_no_separator(self, loader: PromptLoader) -> None:
-        result = loader.load_sections(["meditation"])
-        assert result == "Count down from 10 to 1."
+        result = loader.load_sections(["anti-slop"])
+        assert result == "Anti-slop preamble content."
 
     def test_load_sections_nonexistent_raises_file_not_found(self, loader: PromptLoader) -> None:
         with pytest.raises(FileNotFoundError):
-            loader.load_sections(["meditation", "nonexistent"])
+            loader.load_sections(["anti-slop", "nonexistent"])
 
 
 # ---------------------------------------------------------------------------
@@ -154,12 +154,12 @@ class TestConvenienceFunctions:
 
     def test_load_prompt_loads_from_default_loader(self) -> None:
         # This tests against the real prompts directory
-        # The meditation section should exist
-        result = load_section("meditation")
-        assert "10" in result  # The meditation preamble mentions counting from 10
+        # The anti-slop section should exist
+        result = load_section("anti-slop")
+        assert "Analytical Standards" in result
 
     def test_load_sections_from_default_loader(self) -> None:
-        result = load_sections(["meditation"])
+        result = load_sections(["anti-slop"])
         assert len(result) > 0
 
 
@@ -179,7 +179,7 @@ class TestAllPromptFilesExist:
     @pytest.mark.parametrize(
         "path",
         [
-            "sections/meditation.md",
+            "sections/anti-slop.md",
             "generators/values.md",
             "generators/situational-awareness.md",
             "generators/strategic.md",

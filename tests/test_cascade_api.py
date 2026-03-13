@@ -272,6 +272,80 @@ class TestCascadeDetail:
         data = resp.json()
         assert len(data["agent_runs"]) == 1
 
+    def test_agent_run_includes_output_text_null_when_not_completed(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        store: PolicyStore,
+    ) -> None:
+        """output_text is null for agent runs that have no stored output."""
+        cascade_id = store.create_cascade("user_input", "values")
+        store.create_agent_run(cascade_id, "generator", "Values generator", "opus", "values")
+
+        resp = client.get(f"/api/cascade/{cascade_id}", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["agent_runs"]) == 1
+        assert data["agent_runs"][0]["output_text"] is None
+
+    def test_agent_run_includes_output_text_with_content(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        store: PolicyStore,
+    ) -> None:
+        """output_text contains the full stored text for completed agent runs."""
+        cascade_id = store.create_cascade("user_input", "values")
+        run_id = store.create_agent_run(
+            cascade_id, "generator", "Values generator", "opus", "values"
+        )
+        store.complete_agent_run(
+            run_id,
+            success=True,
+            output_text="This is the full agent output transcript.",
+        )
+
+        resp = client.get(f"/api/cascade/{cascade_id}", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["agent_runs"]) == 1
+        assert data["agent_runs"][0]["output_text"] == (
+            "This is the full agent output transcript."
+        )
+
+    def test_agent_run_existing_fields_unchanged(
+        self,
+        client: TestClient,
+        auth_headers: dict[str, str],
+        store: PolicyStore,
+    ) -> None:
+        """Existing fields in the agent run dict are unchanged after adding output_text."""
+        cascade_id = store.create_cascade("user_input", "values")
+        run_id = store.create_agent_run(
+            cascade_id, "generator", "Values generator", "opus", "values"
+        )
+        store.complete_agent_run(
+            run_id, success=True, cost=0.05, output_text="Some output"
+        )
+
+        resp = client.get(f"/api/cascade/{cascade_id}", headers=auth_headers)
+        assert resp.status_code == 200
+        agent_run = resp.json()["agent_runs"][0]
+
+        # Verify all existing fields are present and correct
+        assert agent_run["id"] == run_id
+        assert agent_run["agent_type"] == "generator"
+        assert agent_run["agent_label"] == "Values generator"
+        assert agent_run["model"] == "opus"
+        assert agent_run["target_layer"] == "values"
+        assert agent_run["started_at"] is not None
+        assert agent_run["completed_at"] is not None
+        assert agent_run["success"] is True
+        assert agent_run["error_message"] is None
+        assert agent_run["cost_usd"] == pytest.approx(0.05)
+        # And output_text is included
+        assert agent_run["output_text"] == "Some output"
+
 
 # ---------------------------------------------------------------------------
 # History endpoint tests

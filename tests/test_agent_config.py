@@ -18,36 +18,44 @@ from policy_factory.agent.tools import TOOL_SET_FULL, TOOL_SET_NONE, TOOL_SET_RE
 class TestResolveModel:
     """Tests for the resolve_model() function."""
 
-    # --- Claude model roles (need CLI tools) ---
+    # --- CLI-default roles (Claude SDK, model=None) ---
 
-    def test_generator_defaults_to_sonnet(self) -> None:
-        model = resolve_model("generator")
-        assert "sonnet" in model.lower()
+    def test_generator_defaults_to_none(self) -> None:
+        assert resolve_model("generator") is None
 
-    def test_critic_defaults_to_sonnet(self) -> None:
-        model = resolve_model("critic")
-        assert "sonnet" in model.lower()
+    def test_critic_defaults_to_none(self) -> None:
+        assert resolve_model("critic") is None
+
+    def test_heartbeat_sa_update_defaults_to_none(self) -> None:
+        assert resolve_model("heartbeat-sa-update") is None
+
+    def test_seed_defaults_to_none(self) -> None:
+        assert resolve_model("seed") is None
+
+    def test_strategic_seed_defaults_to_none(self) -> None:
+        assert resolve_model("strategic-seed") is None
+
+    def test_tactical_seed_defaults_to_none(self) -> None:
+        assert resolve_model("tactical-seed") is None
+
+    def test_policies_seed_defaults_to_none(self) -> None:
+        assert resolve_model("policies-seed") is None
+
+    # --- Gemini model roles (tool-free, cheap) ---
 
     def test_heartbeat_skim_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("heartbeat-skim")
+        assert model is not None
         assert model.startswith("gemini-")
 
     def test_heartbeat_triage_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("heartbeat-triage")
+        assert model is not None
         assert model.startswith("gemini-")
-
-    def test_heartbeat_sa_update_defaults_to_sonnet(self) -> None:
-        model = resolve_model("heartbeat-sa-update")
-        assert "sonnet" in model.lower()
-
-    def test_seed_defaults_to_sonnet(self) -> None:
-        model = resolve_model("seed")
-        assert "sonnet" in model.lower()
-
-    # --- Gemini model roles (tool-free, cheap) ---
 
     def test_synthesis_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("synthesis")
+        assert model is not None
         assert model.startswith("gemini-")
 
     def test_classifier_defaults_to_gemini_flash_lite(self) -> None:
@@ -56,37 +64,65 @@ class TestResolveModel:
 
     def test_idea_evaluator_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("idea-evaluator")
+        assert model is not None
         assert model.startswith("gemini-")
 
     def test_idea_generator_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("idea-generator")
+        assert model is not None
         assert model.startswith("gemini-")
 
     def test_values_seed_defaults_to_gemini_flash(self) -> None:
         model = resolve_model("values-seed")
+        assert model is not None
         assert model.startswith("gemini-")
 
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):
             resolve_model("nonexistent-role")
 
+    # --- Env var overrides ---
+
     def test_env_var_overrides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("POLICY_FACTORY_MODEL_GENERATOR", "claude-custom-model")
         model = resolve_model("generator")
         assert model == "claude-custom-model"
+
+    def test_env_var_overrides_none_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Env var override works for roles whose default is None."""
+        monkeypatch.setenv("POLICY_FACTORY_MODEL_STRATEGIC_SEED", "claude-opus-4-0-20250514")
+        assert resolve_model("strategic-seed") == "claude-opus-4-0-20250514"
+
+    def test_env_var_overrides_tactical_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("POLICY_FACTORY_MODEL_TACTICAL_SEED", "claude-sonnet-4-20250514")
+        assert resolve_model("tactical-seed") == "claude-sonnet-4-20250514"
+
+    def test_env_var_overrides_policies_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("POLICY_FACTORY_MODEL_POLICIES_SEED", "claude-sonnet-4-20250514")
+        assert resolve_model("policies-seed") == "claude-sonnet-4-20250514"
 
     def test_env_var_empty_string_uses_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("POLICY_FACTORY_MODEL_CRITIC", "")
         model = resolve_model("critic")
         assert model == _DEFAULT_MODELS["critic"]
 
-    def test_all_roles_have_defaults(self) -> None:
-        """Every role should have both a default model and an env var mapping."""
+    # --- Structural checks ---
+
+    def test_all_roles_have_env_var_mapping(self) -> None:
+        """Every role should have both a default model entry and an env var mapping."""
         for role in _DEFAULT_MODELS:
             assert role in _ENV_VAR_MAP, f"Role {role!r} missing env var mapping"
+
+    def test_gemini_roles_return_strings(self) -> None:
+        """Gemini-backed roles still return their hardcoded model strings."""
+        gemini_roles = [
+            "synthesis", "classifier", "heartbeat-skim", "heartbeat-triage",
+            "idea-evaluator", "idea-generator", "values-seed",
+        ]
+        for role in gemini_roles:
             model = resolve_model(role)
-            assert isinstance(model, str)
-            assert len(model) > 0
+            assert isinstance(model, str), f"Gemini role {role!r} should return a string"
+            assert len(model) > 0, f"Gemini role {role!r} returned empty string"
 
     def test_all_env_vars_are_unique(self) -> None:
         """Each role should have a unique environment variable name."""
@@ -187,6 +223,21 @@ class TestResolveAllowedTools:
         tools = resolve_allowed_tools("idea-generator")
         assert tools == []
 
+    def test_strategic_seed_gets_mcp_ref_no_web_search(self) -> None:
+        tools = resolve_allowed_tools("strategic-seed")
+        assert tools == [MCP_SERVER_REF]
+        assert "WebSearch" not in tools
+
+    def test_tactical_seed_gets_mcp_ref_no_web_search(self) -> None:
+        tools = resolve_allowed_tools("tactical-seed")
+        assert tools == [MCP_SERVER_REF]
+        assert "WebSearch" not in tools
+
+    def test_policies_seed_gets_mcp_ref_no_web_search(self) -> None:
+        tools = resolve_allowed_tools("policies-seed")
+        assert tools == [MCP_SERVER_REF]
+        assert "WebSearch" not in tools
+
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):
             resolve_allowed_tools("nonexistent-role")
@@ -238,6 +289,15 @@ class TestResolveToolSet:
     def test_heartbeat_triage_gets_no_tools(self) -> None:
         assert resolve_tool_set("heartbeat-triage") == TOOL_SET_NONE
 
+    def test_strategic_seed_gets_full_tools(self) -> None:
+        assert resolve_tool_set("strategic-seed") == TOOL_SET_FULL
+
+    def test_tactical_seed_gets_full_tools(self) -> None:
+        assert resolve_tool_set("tactical-seed") == TOOL_SET_FULL
+
+    def test_policies_seed_gets_full_tools(self) -> None:
+        assert resolve_tool_set("policies-seed") == TOOL_SET_FULL
+
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):
             resolve_tool_set("nonexistent-role")
@@ -275,6 +335,15 @@ class TestResolveUseSearch:
 
     def test_idea_generator_no_search(self) -> None:
         assert resolve_use_search("idea-generator") is False
+
+    def test_strategic_seed_no_search(self) -> None:
+        assert resolve_use_search("strategic-seed") is False
+
+    def test_tactical_seed_no_search(self) -> None:
+        assert resolve_use_search("tactical-seed") is False
+
+    def test_policies_seed_no_search(self) -> None:
+        assert resolve_use_search("policies-seed") is False
 
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):

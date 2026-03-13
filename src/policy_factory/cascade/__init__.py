@@ -4,7 +4,12 @@ Public API for triggering and controlling cascades, running critics,
 and synthesising critic assessments.
 """
 
-from .content import gather_cross_layer_context, gather_layer_content
+from .content import (
+    check_prerequisites,
+    gather_context_below,
+    gather_cross_layer_context,
+    gather_layer_content,
+)
 from .controller import CascadeController, CascadeState
 from .critic_runner import CriticRunnerResult, SingleCriticResult, run_critics
 from .critics import (
@@ -29,6 +34,8 @@ __all__ = [
     "CriticRunnerResult",
     "SingleCriticResult",
     "SynthesisRunnerResult",
+    "check_prerequisites",
+    "gather_context_below",
     "gather_cross_layer_context",
     "gather_layer_content",
     "get_all_archetypes",

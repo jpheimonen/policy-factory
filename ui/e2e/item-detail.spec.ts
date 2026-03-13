@@ -1,4 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { setupAndLogin, getAdminToken } from "./helpers";
 
 /**
  * E2E tests for item detail and editing.
@@ -6,41 +7,25 @@ import { test, expect, Page } from "@playwright/test";
  * Verifies: frontmatter rendering, edit mode, save, cross-layer references.
  */
 
-async function setupAndLogin(page: Page) {
-  await page.request.post("/api/auth/register", {
-    data: { email: "item@test.com", password: "password123" },
-  });
-  const loginResp = await page.request.post("/api/auth/login", {
-    data: { email: "item@test.com", password: "password123" },
-  });
-  const { token } = await loginResp.json();
-
-  // Create test item
-  await page.request.post("/api/layers/values/items", {
-    headers: { Authorization: `Bearer ${token}` },
-    data: {
-      filename: "item-detail-test.md",
-      frontmatter: {
-        title: "Detail Test Item",
-        status: "active",
-        references: [],
-      },
-      body: "# Detail Test\n\nThis is the item body for testing.",
-    },
-  });
-
-  await page.goto("/login");
-  await page.getByLabel(/email/i).fill("item@test.com");
-  await page.getByLabel(/password/i).fill("password123");
-  await page.getByRole("button", { name: /log\s*in|sign\s*in/i }).click();
-  await expect(page).toHaveURL(/\/$/);
-
-  return token;
-}
-
 test.describe("Item Detail and Editing", () => {
   test("renders frontmatter and body", async ({ page }) => {
     await setupAndLogin(page);
+    const token = await getAdminToken(page);
+
+    // Create test item
+    await page.request.post("/api/layers/values/items", {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        filename: "item-detail-test.md",
+        frontmatter: {
+          title: "Detail Test Item",
+          status: "active",
+          references: [],
+        },
+        body: "# Detail Test\n\nThis is the item body for testing.",
+      },
+    });
+
     await page.goto("/layers/values/item-detail-test.md");
 
     // Should show the item title
@@ -54,7 +39,23 @@ test.describe("Item Detail and Editing", () => {
 
   test("edit mode allows modification", async ({ page }) => {
     await setupAndLogin(page);
-    await page.goto("/layers/values/item-detail-test.md");
+    const token = await getAdminToken(page);
+
+    // Create test item
+    await page.request.post("/api/layers/values/items", {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        filename: "item-edit-test.md",
+        frontmatter: {
+          title: "Edit Test Item",
+          status: "active",
+          references: [],
+        },
+        body: "# Edit Test\n\nEditable item body.",
+      },
+    });
+
+    await page.goto("/layers/values/item-edit-test.md");
 
     // Find and click edit button
     const editButton = page.getByRole("button", { name: /edit/i });

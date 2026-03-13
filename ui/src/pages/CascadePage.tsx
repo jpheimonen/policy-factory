@@ -20,7 +20,7 @@ import { useCascadeStore } from "@/stores/cascadeStore.ts";
 import type { CascadeStep } from "@/stores/cascadeStore.ts";
 import { LAYER_NAME_KEYS } from "@/lib/layerConstants.ts";
 import { apiRequest } from "@/lib/apiClient.ts";
-import { formatRelativeTime } from "@/lib/timeUtils.ts";
+import { formatDuration, formatRelativeTime } from "@/lib/timeUtils.ts";
 import { Badge, Button, Text } from "@/components/atoms/index.ts";
 import { EmptyState } from "@/components/molecules/index.ts";
 import { useAutoScroll } from "@/hooks/useAutoScroll.ts";
@@ -70,6 +70,17 @@ import {
   HistoryDetail,
   IdleContainer,
   LayerBadge,
+  AgentRunSection,
+  AgentRunSectionHeading,
+  AgentRunEntry,
+  AgentRunHeader,
+  AgentRunLeft,
+  AgentRunLabel,
+  AgentRunRight,
+  AgentRunError,
+  AgentRunTranscriptToggle,
+  AgentRunTranscriptContainer,
+  AgentRunTranscriptText,
 } from "./CascadePage.styles.ts";
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -151,6 +162,7 @@ interface AgentRunInfo {
   success: boolean;
   error_message: string | null;
   cost_usd: number;
+  output_text: string | null;
 }
 
 // ── Utility functions ────────────────────────────────────────────────
@@ -159,15 +171,6 @@ function getLayersInCascade(startingLayer: string): string[] {
   const startIdx = LAYER_ORDER.indexOf(startingLayer);
   if (startIdx === -1) return [...LAYER_ORDER];
   return LAYER_ORDER.slice(startIdx) as string[];
-}
-
-function formatDuration(start: string, end: string): string {
-  const diffMs = new Date(end).getTime() - new Date(start).getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return `${diffSec}s`;
-  const min = Math.floor(diffSec / 60);
-  const sec = diffSec % 60;
-  return `${min}m ${sec}s`;
 }
 
 function getTriggerSourceLabel(source: string, t: (key: string) => string): string {
@@ -925,6 +928,23 @@ function CascadeDetailPanel({
   detail: CascadeDetail | undefined;
   t: (key: string, params?: Record<string, string>) => string;
 }) {
+  // Track which agent run transcripts are expanded (by agent run id)
+  const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const handleTranscriptToggle = useCallback((agentRunId: string) => {
+    setExpandedTranscripts((prev) => {
+      const next = new Set(prev);
+      if (next.has(agentRunId)) {
+        next.delete(agentRunId);
+      } else {
+        next.add(agentRunId);
+      }
+      return next;
+    });
+  }, []);
+
   if (!detail) {
     return (
       <HistoryDetail>
@@ -978,6 +998,65 @@ function CascadeDetailPanel({
             </LayerBadge>
           ))}
         </div>
+      )}
+      {detail.agent_runs.length > 0 && (
+        <AgentRunSection>
+          <AgentRunSectionHeading>
+            {t("cascade.agentRunsHeading")}
+          </AgentRunSectionHeading>
+          {detail.agent_runs.map((run) => {
+            const isTranscriptExpanded = expandedTranscripts.has(run.id);
+            const duration =
+              run.started_at && run.completed_at
+                ? formatDuration(run.started_at, run.completed_at)
+                : null;
+
+            return (
+              <AgentRunEntry key={run.id}>
+                <AgentRunHeader>
+                  <AgentRunLeft>
+                    <AgentRunLabel>{run.agent_label}</AgentRunLabel>
+                    <LayerBadge $layerSlug={run.target_layer}>
+                      {t(LAYER_NAME_KEYS[run.target_layer] ?? run.target_layer)}
+                    </LayerBadge>
+                    <Badge $variant={run.success ? "success" : "error"}>
+                      {run.success
+                        ? t("cascade.agentRunSuccess")
+                        : t("cascade.agentRunFailed")}
+                    </Badge>
+                  </AgentRunLeft>
+                  <AgentRunRight>
+                    {duration && <span>{duration}</span>}
+                  </AgentRunRight>
+                </AgentRunHeader>
+                {run.error_message && (
+                  <AgentRunError>{run.error_message}</AgentRunError>
+                )}
+                {run.output_text != null && (
+                  <>
+                    <AgentRunTranscriptToggle
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        handleTranscriptToggle(run.id);
+                      }}
+                    >
+                      {isTranscriptExpanded
+                        ? `▾ ${t("cascade.collapseTranscript")}`
+                        : `▸ ${t("cascade.expandTranscript")}`}
+                    </AgentRunTranscriptToggle>
+                    {isTranscriptExpanded && (
+                      <AgentRunTranscriptContainer>
+                        <AgentRunTranscriptText>
+                          {run.output_text}
+                        </AgentRunTranscriptText>
+                      </AgentRunTranscriptContainer>
+                    )}
+                  </>
+                )}
+              </AgentRunEntry>
+            );
+          })}
+        </AgentRunSection>
       )}
     </HistoryDetail>
   );

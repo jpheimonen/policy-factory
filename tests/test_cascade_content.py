@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from policy_factory.cascade.content import (
+    check_prerequisites,
+    gather_context_below,
     gather_cross_layer_context,
     gather_layer_content,
 )
@@ -148,3 +150,142 @@ class TestGatherCrossLayerContext:
         """An invalid layer slug returns a fallback message."""
         context = gather_cross_layer_context(populated_data_dir, "nonexistent")
         assert "No cross-layer context available" in context
+
+
+class TestGatherContextBelow:
+    """Test the gather_context_below function."""
+
+    def test_values_returns_empty_string(self, data_dir: Path):
+        """Values is the bottom layer — no layers below, returns empty string."""
+        result = gather_context_below(data_dir, "values")
+        assert result == ""
+
+    def test_sa_includes_values_content(self, populated_data_dir: Path):
+        """SA layer context includes content from the values layer below."""
+        result = gather_context_below(populated_data_dir, "situational-awareness")
+        assert "Values" in result
+        assert "National Security" in result
+        assert "Economic Prosperity" in result
+
+    def test_strategic_includes_values_and_sa(self, populated_data_dir: Path):
+        """Strategic objectives context includes values and SA content."""
+        result = gather_context_below(
+            populated_data_dir, "strategic-objectives"
+        )
+        # Values content
+        assert "Values" in result
+        assert "National Security" in result
+        # SA content
+        assert "Situational Awareness" in result
+
+    def test_policies_includes_all_four_layers(self, populated_data_dir: Path):
+        """Policies context includes content from all 4 layers below."""
+        # Add strategic and tactical content
+        (populated_data_dir / "strategic-objectives" / "README.md").write_text(
+            "# Strategic\n\nStrategic goals."
+        )
+        (populated_data_dir / "strategic-objectives" / "goal-1.md").write_text(
+            "---\ntitle: Goal One\nstatus: active\n---\nFirst strategic goal."
+        )
+        (populated_data_dir / "tactical-objectives" / "README.md").write_text(
+            "# Tactical\n\nTactical objectives."
+        )
+        (populated_data_dir / "tactical-objectives" / "tactic-1.md").write_text(
+            "---\ntitle: Tactic One\nstatus: active\n---\nFirst tactical objective."
+        )
+
+        result = gather_context_below(populated_data_dir, "policies")
+        assert "Values" in result
+        assert "Situational Awareness" in result
+        assert "Strategic Objectives" in result
+        assert "Tactical Objectives" in result
+        assert "Goal One" in result
+        assert "Tactic One" in result
+
+    def test_layer_sections_have_display_name_headings(
+        self, populated_data_dir: Path
+    ):
+        """Each layer section has a heading with the layer's display name."""
+        result = gather_context_below(
+            populated_data_dir, "situational-awareness"
+        )
+        assert "## Values Layer" in result
+
+    def test_empty_layers_below_produce_no_errors(self, data_dir: Path):
+        """Empty layers below do not cause errors — they just produce no content."""
+        # SA layer with empty values below (no items, no narrative)
+        result = gather_context_below(data_dir, "situational-awareness")
+        # Should not raise, should produce some output (the layer heading is still there)
+        assert isinstance(result, str)
+
+    def test_invalid_layer_slug_raises_value_error(self, data_dir: Path):
+        """An invalid layer slug raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid layer slug"):
+            gather_context_below(data_dir, "nonexistent-layer")
+
+    def test_content_includes_narratives_and_items(
+        self, populated_data_dir: Path
+    ):
+        """Context includes both narrative summaries and items when they exist."""
+        result = gather_context_below(
+            populated_data_dir, "situational-awareness"
+        )
+        # Values layer has both narrative and items
+        assert "Finland's core national values" in result
+        assert "National Security" in result
+        assert "paramount concern" in result
+
+
+class TestCheckPrerequisites:
+    """Test the check_prerequisites function."""
+
+    def test_values_returns_empty_list(self, data_dir: Path):
+        """Values is the bottom layer — no prerequisites, returns empty list."""
+        result = check_prerequisites(data_dir, "values")
+        assert result == []
+
+    def test_sa_returns_empty_when_values_has_items(
+        self, populated_data_dir: Path
+    ):
+        """SA prerequisites are met when the values layer has items."""
+        result = check_prerequisites(populated_data_dir, "situational-awareness")
+        assert result == []
+
+    def test_sa_returns_values_when_empty(self, data_dir: Path):
+        """SA returns ['values'] when the values layer has no items."""
+        result = check_prerequisites(data_dir, "situational-awareness")
+        assert result == ["values"]
+
+    def test_strategic_returns_all_empty_layers(self, data_dir: Path):
+        """Strategic-objectives returns all empty layers below when none are populated."""
+        result = check_prerequisites(data_dir, "strategic-objectives")
+        assert "values" in result
+        assert "situational-awareness" in result
+
+    def test_strategic_returns_empty_when_all_populated(
+        self, populated_data_dir: Path
+    ):
+        """Strategic-objectives returns empty list when all layers below have items."""
+        # values already has items; add SA items
+        (populated_data_dir / "situational-awareness" / "threat-1.md").write_text(
+            "---\ntitle: Threat One\nstatus: active\n---\nA geopolitical threat."
+        )
+        result = check_prerequisites(
+            populated_data_dir, "strategic-objectives"
+        )
+        assert result == []
+
+    def test_policies_with_partial_population(self, populated_data_dir: Path):
+        """Policies with only some layers populated returns the empty slugs."""
+        # values has items, SA has no items, strategic and tactical are empty
+        result = check_prerequisites(populated_data_dir, "policies")
+        # values is populated, SA is NOT (has only narrative, no items)
+        assert "values" not in result
+        assert "situational-awareness" in result
+        assert "strategic-objectives" in result
+        assert "tactical-objectives" in result
+
+    def test_invalid_layer_slug_raises_value_error(self, data_dir: Path):
+        """An invalid layer slug raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid layer slug"):
+            check_prerequisites(data_dir, "nonexistent-layer")
