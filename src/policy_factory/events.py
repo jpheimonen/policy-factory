@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Event type literals
 # ---------------------------------------------------------------------------
 
-EventCategory = Literal["cascade", "heartbeat", "idea", "system"]
+EventCategory = Literal["cascade", "heartbeat", "idea", "seed", "system"]
 
 EventType = Literal[
     # Cascade lifecycle (7)
@@ -48,6 +48,10 @@ EventType = Literal[
     "heartbeat_started",
     "heartbeat_tier_completed",
     "heartbeat_completed",
+    # Seed progress (3)
+    "seed_started",
+    "seed_progress",
+    "seed_completed",
     # Ideas (5)
     "idea_submitted",
     "idea_evaluation_started",
@@ -84,6 +88,10 @@ _EVENT_CATEGORY_MAP: dict[str, EventCategory] = {
     "heartbeat_started": "heartbeat",
     "heartbeat_tier_completed": "heartbeat",
     "heartbeat_completed": "heartbeat",
+    # Seed
+    "seed_started": "seed",
+    "seed_progress": "seed",
+    "seed_completed": "seed",
     # Ideas
     "idea_submitted": "idea",
     "idea_evaluation_started": "idea",
@@ -434,6 +442,65 @@ class HeartbeatCompleted(BaseEvent):
             **super().to_dict(),
             "heartbeat_run_id": self.heartbeat_run_id,
             "highest_tier": self.highest_tier,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Seed progress events (3)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SeedStarted(BaseEvent):
+    """Emitted when a seed operation begins for a layer."""
+
+    layer_slug: str = ""
+    agent_label: str = ""
+    event_type: str = field(default="seed_started", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "layer_slug": self.layer_slug,
+            "agent_label": self.agent_label,
+        }
+
+
+@dataclass
+class SeedProgress(BaseEvent):
+    """Emitted at key milestones during a seed operation."""
+
+    layer_slug: str = ""
+    step: str = ""  # agent_running, parsing, writing, committing, cascade
+    message: str = ""
+    event_type: str = field(default="seed_progress", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "layer_slug": self.layer_slug,
+            "step": self.step,
+            "message": self.message,
+        }
+
+
+@dataclass
+class SeedCompleted(BaseEvent):
+    """Emitted when a seed operation finishes (success or failure)."""
+
+    layer_slug: str = ""
+    success: bool = True
+    message: str = ""
+    items_created: int = 0
+    event_type: str = field(default="seed_completed", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "layer_slug": self.layer_slug,
+            "success": self.success,
+            "message": self.message,
+            "items_created": self.items_created,
         }
 
 

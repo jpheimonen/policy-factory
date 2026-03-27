@@ -39,6 +39,10 @@ export type EventType =
   | "heartbeat_started"
   | "heartbeat_tier_completed"
   | "heartbeat_completed"
+  // Seed progress (3)
+  | "seed_started"
+  | "seed_progress"
+  | "seed_completed"
   // Ideas (5)
   | "idea_submitted"
   | "idea_evaluation_started"
@@ -51,7 +55,7 @@ export type EventType =
   | "cascade_lock_acquired"
   | "cascade_lock_released";
 
-export type EventCategory = "cascade" | "heartbeat" | "idea" | "system";
+export type EventCategory = "cascade" | "heartbeat" | "idea" | "seed" | "system";
 
 // ── Base event interface ───────────────────────────────────────────
 
@@ -182,6 +186,29 @@ export interface HeartbeatCompletedEvent extends BaseEvent {
   highest_tier: number;
 }
 
+// ── Seed progress events ──────────────────────────────────────────
+
+export interface SeedStartedEvent extends BaseEvent {
+  event_type: "seed_started";
+  layer_slug: string;
+  agent_label: string;
+}
+
+export interface SeedProgressEvent extends BaseEvent {
+  event_type: "seed_progress";
+  layer_slug: string;
+  step: string;
+  message: string;
+}
+
+export interface SeedCompletedEvent extends BaseEvent {
+  event_type: "seed_completed";
+  layer_slug: string;
+  success: boolean;
+  message: string;
+  items_created: number;
+}
+
 // ── Idea events ────────────────────────────────────────────────────
 
 export interface IdeaSubmittedEvent extends BaseEvent {
@@ -256,6 +283,10 @@ export type PolicyEvent =
   | HeartbeatStartedEvent
   | HeartbeatTierCompletedEvent
   | HeartbeatCompletedEvent
+  // Seed progress
+  | SeedStartedEvent
+  | SeedProgressEvent
+  | SeedCompletedEvent
   // Ideas
   | IdeaSubmittedEvent
   | IdeaEvaluationStartedEvent
@@ -311,6 +342,9 @@ const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   heartbeat_started: "heartbeat",
   heartbeat_tier_completed: "heartbeat",
   heartbeat_completed: "heartbeat",
+  seed_started: "seed",
+  seed_progress: "seed",
+  seed_completed: "seed",
   idea_submitted: "idea",
   idea_evaluation_started: "idea",
   idea_evaluation_completed: "idea",

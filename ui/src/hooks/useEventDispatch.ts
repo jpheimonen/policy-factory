@@ -13,17 +13,20 @@
  * - Cascade events → cascade store
  * - Layer processing events → cascade store
  * - Agent text chunk events → cascade store (streaming text buffer)
+ * - Seed events → seed progress store
  * - Idea events → idea store
  * - All events → activity store (complete chronological stream)
  *
  * Side effects:
  * - cascade_completed → triggers layer store refresh
+ * - seed_completed → triggers layer store refresh
  */
 import { useCallback } from "react";
 import { useCascadeStore } from "@/stores/cascadeStore.ts";
 import { useIdeaStore } from "@/stores/ideaStore.ts";
 import { useActivityStore } from "@/stores/activityStore.ts";
 import { useLayerStore } from "@/stores/layerStore.ts";
+import { useSeedProgressStore } from "@/stores/seedProgressStore.ts";
 import type { PolicyEvent } from "@/types/events.ts";
 
 /**
@@ -106,6 +109,19 @@ export function useEventDispatch() {
         break;
       case "idea_generation_completed":
         ideaStore.handleIdeaGenerationCompleted(event);
+        break;
+
+      // Seed progress events → seed progress store
+      case "seed_started":
+        useSeedProgressStore.getState().handleSeedStarted(event);
+        break;
+      case "seed_progress":
+        useSeedProgressStore.getState().handleSeedProgress(event);
+        break;
+      case "seed_completed":
+        useSeedProgressStore.getState().handleSeedCompleted(event);
+        // Side effect: refresh layer data (seed created content)
+        useLayerStore.getState().refresh();
         break;
 
       // Heartbeat and system events — no dedicated store action needed.

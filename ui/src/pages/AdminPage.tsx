@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/i18n/index.ts";
 import { useAuthStore } from "@/stores/authStore.ts";
+import { useSeedProgressStore } from "@/stores/seedProgressStore.ts";
 import { apiRequest, isApiError } from "@/lib/apiClient.ts";
 import { Button, Badge, Input } from "@/components/atoms/index.ts";
 import { LoadingState, ErrorState, FormField, ConfirmModal } from "@/components/molecules/index.ts";
@@ -42,6 +43,7 @@ import {
   LayerInfo,
   LayerName,
   LayerCount,
+  SeedProgressMessage,
 } from "./AdminPage.styles.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -133,6 +135,7 @@ export function AdminPage() {
   const navigate = useNavigate();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const currentUser = useAuthStore((s) => s.user);
+  const seedProgress = useSeedProgressStore((s) => s.progress);
 
   // ── Admin guard ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -565,6 +568,7 @@ export function AdminPage() {
 
                       const isLayerLoading = !!seedingLayer[layer.slug];
                       const buttonDisabled = !prerequisitesMet || anySeedRunning;
+                      const layerProgress = seedProgress[layer.slug];
 
                       return (
                         <LayerRow
@@ -574,10 +578,15 @@ export function AdminPage() {
                           <LayerInfo>
                             <StatusDot $active={layer.seeded} />
                             <LayerName>{layer.display_name}</LayerName>
-                            {layer.seeded && (
+                            {layer.seeded && !isLayerLoading && (
                               <LayerCount>
                                 ({t("admin.seedLayerCount", { count: String(layer.count) })})
                               </LayerCount>
+                            )}
+                            {isLayerLoading && layerProgress && !layerProgress.done && (
+                              <SeedProgressMessage>
+                                {layerProgress.message}
+                              </SeedProgressMessage>
                             )}
                           </LayerInfo>
                           <Button

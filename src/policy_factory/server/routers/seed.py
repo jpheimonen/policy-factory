@@ -317,11 +317,25 @@ async def seed_values(
     Returns:
         ValuesSeedResponse with success status and count of values created.
     """
+    from policy_factory.events import SeedCompleted, SeedProgress, SeedStarted
+
     data_dir = get_data_dir()
+    emitter = get_event_emitter()
+
+    await emitter.emit(SeedStarted(
+        layer_slug="values",
+        agent_label="Values layer seed agent",
+    ))
 
     from policy_factory.agent.prompts import build_agent_prompt
 
     prompt = build_agent_prompt("seed", "values")
+
+    await emitter.emit(SeedProgress(
+        layer_slug="values",
+        step="agent_running",
+        message="Running values seed agent…",
+    ))
 
     result, error_msg = await _run_seed_agent(
         prompt=prompt,
@@ -330,20 +344,28 @@ async def seed_values(
         target_layer="values",
     )
     if error_msg is not None:
+        await emitter.emit(SeedCompleted(
+            layer_slug="values", success=False, message=error_msg,
+        ))
         return ValuesSeedResponse(success=False, message=error_msg)
 
     # Parse the agent output to extract individual value documents
+    await emitter.emit(SeedProgress(
+        layer_slug="values",
+        step="parsing",
+        message="Parsing agent output…",
+    ))
     parsed_values = _parse_values_output(result.full_output)
 
     if not parsed_values:
-        # Zero values could be parsed — return error
-        return ValuesSeedResponse(
-            success=False,
-            message=(
-                "Failed to parse any values from agent output. "
-                "The agent may have produced malformed output."
-            ),
+        msg = (
+            "Failed to parse any values from agent output. "
+            "The agent may have produced malformed output."
         )
+        await emitter.emit(SeedCompleted(
+            layer_slug="values", success=False, message=msg,
+        ))
+        return ValuesSeedResponse(success=False, message=msg)
 
     # Clear existing values before writing new ones
     existing_items = list_items(data_dir, "values")
@@ -354,6 +376,11 @@ async def seed_values(
             logger.warning("Failed to delete existing value %s", item.filename)
 
     # Write each parsed value as a markdown file
+    await emitter.emit(SeedProgress(
+        layer_slug="values",
+        step="writing",
+        message=f"Writing {len(parsed_values)} values…",
+    ))
     values_created = 0
     seen_slugs: set[str] = set()
 
@@ -385,15 +412,26 @@ async def seed_values(
             logger.warning("Failed to write value %s: %s", filename, exc)
 
     # Commit changes to git
+    await emitter.emit(SeedProgress(
+        layer_slug="values",
+        step="committing",
+        message="Committing to git…",
+    ))
     try:
         commit_changes(data_dir, f"Seed values layer ({values_created} values)")
     except Exception:
         logger.warning("Git commit failed after values seeding", exc_info=True)
 
+    msg = f"Values layer seeded successfully with {values_created} values."
+    await emitter.emit(SeedCompleted(
+        layer_slug="values", success=True, message=msg,
+        items_created=values_created,
+    ))
+
     return ValuesSeedResponse(
         success=True,
         values_created=values_created,
-        message=f"Values layer seeded successfully with {values_created} values.",
+        message=msg,
     )
 
 
@@ -417,9 +455,16 @@ async def trigger_seed(
     Returns:
         SeedResponse with success status, cascade ID, and message.
     """
+    from policy_factory.events import SeedCompleted, SeedProgress, SeedStarted
+
     store = get_store()
     emitter = get_event_emitter()
     data_dir = get_data_dir()
+
+    await emitter.emit(SeedStarted(
+        layer_slug="situational-awareness",
+        agent_label="Situational Awareness seed agent",
+    ))
 
     # Clear existing SA items before re-seeding
     existing_items = list_items(data_dir, "situational-awareness")
@@ -468,6 +513,12 @@ async def trigger_seed(
         )
         prompt = context_section + prompt
 
+    await emitter.emit(SeedProgress(
+        layer_slug="situational-awareness",
+        step="agent_running",
+        message="Running SA seed agent (web research)…",
+    ))
+
     result, error_msg = await _run_seed_agent(
         prompt=prompt,
         agent_role="seed",
@@ -475,15 +526,28 @@ async def trigger_seed(
         target_layer="situational-awareness",
     )
     if error_msg is not None:
+        await emitter.emit(SeedCompleted(
+            layer_slug="situational-awareness", success=False, message=error_msg,
+        ))
         return SeedResponse(success=False, message=error_msg)
 
     # Auto-commit the seeded content
+    await emitter.emit(SeedProgress(
+        layer_slug="situational-awareness",
+        step="committing",
+        message="Committing to git…",
+    ))
     try:
         commit_changes(data_dir, "Seed Situational Awareness layer")
     except Exception:
         logger.warning("Git commit failed after seeding", exc_info=True)
 
     # Trigger upward cascade from SA layer
+    await emitter.emit(SeedProgress(
+        layer_slug="situational-awareness",
+        step="cascade",
+        message="Triggering upward cascade…",
+    ))
     cascade_id: str | None = None
     try:
         cid, is_cascade = await trigger_cascade(
@@ -497,10 +561,15 @@ async def trigger_seed(
     except Exception as exc:
         logger.error("Failed to trigger post-seed cascade: %s", exc)
 
+    msg = "Situational Awareness layer seeded successfully."
+    await emitter.emit(SeedCompleted(
+        layer_slug="situational-awareness", success=True, message=msg,
+    ))
+
     return SeedResponse(
         success=True,
         cascade_id=cascade_id,
-        message="Situational Awareness layer seeded successfully.",
+        message=msg,
     )
 
 
@@ -561,18 +630,25 @@ async def _seed_upper_layer(
     Returns:
         SeedResponse with success/failure status and message.
     """
+    from policy_factory.events import SeedCompleted, SeedProgress, SeedStarted
+
     data_dir = get_data_dir()
+    emitter = get_event_emitter()
 
     # 1. Validate prerequisites — all layers below must have items
     empty_layers = check_prerequisites(data_dir, layer_slug)
     if empty_layers:
         names = ", ".join(empty_layers)
-        return SeedResponse(
-            success=False,
-            message=(
-                f"Cannot seed {layer_slug}: prerequisite layers are empty: {names}"
-            ),
-        )
+        msg = f"Cannot seed {layer_slug}: prerequisite layers are empty: {names}"
+        await emitter.emit(SeedCompleted(
+            layer_slug=layer_slug, success=False, message=msg,
+        ))
+        return SeedResponse(success=False, message=msg)
+
+    await emitter.emit(SeedStarted(
+        layer_slug=layer_slug,
+        agent_label=agent_label,
+    ))
 
     # 2. Clear existing items in the target layer
     existing_items = list_items(data_dir, layer_slug)
@@ -587,6 +663,11 @@ async def _seed_upper_layer(
             )
 
     # 3. Gather context from all layers below
+    await emitter.emit(SeedProgress(
+        layer_slug=layer_slug,
+        step="preparing",
+        message="Gathering context from layers below…",
+    ))
     context_below = gather_context_below(data_dir, layer_slug)
 
     from policy_factory.agent.prompts import build_agent_prompt
@@ -601,6 +682,11 @@ async def _seed_upper_layer(
     )
 
     # 5. Execute the seed agent
+    await emitter.emit(SeedProgress(
+        layer_slug=layer_slug,
+        step="agent_running",
+        message=f"Running {agent_label}…",
+    ))
     result, error_msg = await _run_seed_agent(
         prompt=prompt,
         agent_role=agent_role,
@@ -608,9 +694,17 @@ async def _seed_upper_layer(
         target_layer=layer_slug,
     )
     if error_msg is not None:
+        await emitter.emit(SeedCompleted(
+            layer_slug=layer_slug, success=False, message=error_msg,
+        ))
         return SeedResponse(success=False, message=error_msg)
 
     # 6. Commit to git
+    await emitter.emit(SeedProgress(
+        layer_slug=layer_slug,
+        step="committing",
+        message="Committing to git…",
+    ))
     try:
         commit_changes(data_dir, f"Seed {layer_slug} layer")
     except Exception:
@@ -619,10 +713,11 @@ async def _seed_upper_layer(
         )
 
     # 7. Return success (no cascade_id — upper seeds don't trigger cascades)
-    return SeedResponse(
-        success=True,
-        message=f"{layer_slug} layer seeded successfully.",
-    )
+    msg = f"{layer_slug} layer seeded successfully."
+    await emitter.emit(SeedCompleted(
+        layer_slug=layer_slug, success=True, message=msg,
+    ))
+    return SeedResponse(success=True, message=msg)
 
 
 @router.post("/strategic-objectives")
