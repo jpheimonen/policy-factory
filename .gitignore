@@ -19,6 +19,9 @@ ENV/
 # Node.js
 node_modules/
 
+# Vite cache
+.vite/
+
 # Built frontend assets (populated by build step)
 src/policy_factory/static/dist/
 !src/policy_factory/static/dist/.gitkeep

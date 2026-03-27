@@ -35,6 +35,7 @@ interface TokenResponse {
 
 interface AuthStatusResponse {
   has_users: boolean;
+  local_mode: boolean;
 }
 
 // ── JWT decoding (without verification) ──────────────────────────────
@@ -209,15 +210,72 @@ export const useAuthStore = create<AuthState>((set, get) => {
     },
 
     initialize: async () => {
-      const storedToken = getStoredToken();
+      // First, check auth status to see if we're in local mode
+      try {
+        const statusData = await apiRequest<AuthStatusResponse>(
+          "/api/auth/status",
+          { skipAuth: true }
+        );
 
-      if (storedToken) {
-        // Decode token to extract user info (without server validation)
-        const payload = decodeJwtPayload(storedToken);
-        if (payload) {
-          // Check if token is expired
-          const now = Date.now() / 1000;
-          if (payload.exp > now) {
+        // Local mode bypass — auto-authenticate as admin
+        if (statusData.local_mode) {
+          set({
+            token: "local-mode-bypass",
+            user: {
+              id: "local-admin",
+              email: "admin@local",
+              role: "admin",
+              created_at: "",
+            },
+            isAuthenticated: true,
+            isAdmin: true,
+            initialized: true,
+            hasUsers: true,
+          });
+          return;
+        }
+
+        // Not local mode — proceed with normal auth flow
+        const storedToken = getStoredToken();
+
+        if (storedToken) {
+          // Decode token to extract user info (without server validation)
+          const payload = decodeJwtPayload(storedToken);
+          if (payload) {
+            // Check if token is expired
+            const now = Date.now() / 1000;
+            if (payload.exp > now) {
+              setClientToken(storedToken);
+              set({
+                token: storedToken,
+                user: {
+                  id: payload.sub,
+                  email: payload.email,
+                  role: payload.role,
+                  created_at: "",
+                },
+                isAuthenticated: true,
+                isAdmin: payload.role === "admin",
+                initialized: true,
+                hasUsers: statusData.has_users,
+              });
+              return;
+            }
+          }
+
+          // Token was invalid or expired — clean up
+          removeStoredToken();
+          setClientToken(null);
+        }
+
+        // No valid stored token
+        set({ initialized: true, hasUsers: statusData.has_users });
+      } catch {
+        // Network error — fall back to stored token check
+        const storedToken = getStoredToken();
+        if (storedToken) {
+          const payload = decodeJwtPayload(storedToken);
+          if (payload && payload.exp > Date.now() / 1000) {
             setClientToken(storedToken);
             set({
               token: storedToken,
@@ -234,19 +292,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
             });
             return;
           }
+          removeStoredToken();
+          setClientToken(null);
         }
-
-        // Token was invalid or expired — clean up
-        removeStoredToken();
-        setClientToken(null);
-      }
-
-      // No valid stored token — check if users exist
-      try {
-        const hasUsers = await get().checkHasUsers();
-        set({ initialized: true, hasUsers });
-      } catch {
-        // Network error — assume users may exist
         set({ initialized: true, hasUsers: null });
       }
     },

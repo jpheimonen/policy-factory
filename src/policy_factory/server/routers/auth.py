@@ -17,7 +17,7 @@ from policy_factory.auth import (
     hash_password,
     verify_password,
 )
-from policy_factory.server.deps import get_current_user, get_store
+from policy_factory.server.deps import _is_local_mode, get_current_user, get_store
 from policy_factory.server.validation import validate_email, validate_password
 from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
@@ -118,6 +118,7 @@ class AuthStatusResponse(BaseModel):
     """Response for the auth status check."""
 
     has_users: bool
+    local_mode: bool = False
 
 
 # --- Endpoints ---
@@ -132,9 +133,15 @@ async def auth_status(
     Used by the frontend on initial load to decide whether to show
     the registration page (first-user flow) or the login page.
 
+    Also returns local_mode flag so frontend can auto-authenticate
+    when running in local development mode.
+
     This endpoint is public — no authentication required.
     """
-    return AuthStatusResponse(has_users=store.count_users() > 0)
+    return AuthStatusResponse(
+        has_users=store.count_users() > 0,
+        local_mode=_is_local_mode(),
+    )
 
 
 @router.post("/login")
