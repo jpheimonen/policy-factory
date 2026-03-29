@@ -56,6 +56,40 @@ CHARS_PER_TOKEN = 4
 # File edit detection
 # ---------------------------------------------------------------------------
 
+# Patterns for detecting file edit tool calls in agent output.
+# Each tuple: (pattern, flags, case_insensitive_action)
+_FILE_EDIT_PATTERNS: list[tuple[str, int, bool]] = [
+    # Pattern 1: Tool use XML-style format (common in Claude CLI output)
+    # <tool_use name="write_file">{"path": "values/foo.md", "content": "..."}
+    (
+        r'<tool_use[^>]*name="(write_file|delete_file)"[^>]*>.*?"path"\s*:\s*"([^"]+)"',
+        re.DOTALL,
+        False,
+    ),
+    # Pattern 2: MCP tool call format with JSON arguments
+    # Tool: write_file
+    # Arguments: {"path": "layer/file.md", "content": "..."}
+    (
+        r'Tool:\s*(write_file|delete_file).*?Arguments:\s*\{[^}]*"path"\s*:\s*"([^"]+)"',
+        re.DOTALL | re.IGNORECASE,
+        True,
+    ),
+    # Pattern 3: Function-call style
+    # write_file(path="layer/file.md", content="...")
+    (
+        r'(write_file|delete_file)\s*\(\s*(?:path\s*=\s*)?["\']([^"\']+)["\']',
+        re.IGNORECASE,
+        True,
+    ),
+    # Pattern 4: JSON object with tool_name and input
+    # {"tool_name": "write_file", "input": {"path": "..."}}
+    (
+        r'"(?:tool_name|name)"\s*:\s*"(write_file|delete_file)".*?"path"\s*:\s*"([^"]+)"',
+        re.DOTALL,
+        False,
+    ),
+]
+
 
 def _extract_file_edits(full_output: str) -> list[tuple[str, str]]:
     """Extract file edits from agent output.
@@ -79,46 +113,14 @@ def _extract_file_edits(full_output: str) -> list[tuple[str, str]]:
     edits: list[tuple[str, str]] = []
     seen_paths: set[str] = set()
 
-    # Pattern 1: Tool use XML-style format (common in Claude CLI output)
-    # <tool_use name="write_file">{"path": "values/foo.md", "content": "..."}
-    xml_pattern = r'<tool_use[^>]*name="(write_file|delete_file)"[^>]*>.*?"path"\s*:\s*"([^"]+)"'
-    for match in re.finditer(xml_pattern, full_output, re.DOTALL):
-        action_raw, path = match.groups()
-        action = "write" if action_raw == "write_file" else "delete"
-        if path not in seen_paths:
-            seen_paths.add(path)
-            edits.append((path, action))
-
-    # Pattern 2: MCP tool call format with JSON arguments
-    # Tool: write_file
-    # Arguments: {"path": "layer/file.md", "content": "..."}
-    mcp_pattern = r'Tool:\s*(write_file|delete_file).*?Arguments:\s*\{[^}]*"path"\s*:\s*"([^"]+)"'
-    for match in re.finditer(mcp_pattern, full_output, re.DOTALL | re.IGNORECASE):
-        action_raw, path = match.groups()
-        action = "write" if action_raw.lower() == "write_file" else "delete"
-        if path not in seen_paths:
-            seen_paths.add(path)
-            edits.append((path, action))
-
-    # Pattern 3: Function-call style
-    # write_file(path="layer/file.md", content="...")
-    func_pattern = r'(write_file|delete_file)\s*\(\s*(?:path\s*=\s*)?["\']([^"\']+)["\']'
-    for match in re.finditer(func_pattern, full_output, re.IGNORECASE):
-        action_raw, path = match.groups()
-        action = "write" if action_raw.lower() == "write_file" else "delete"
-        if path not in seen_paths:
-            seen_paths.add(path)
-            edits.append((path, action))
-
-    # Pattern 4: JSON object with tool_name and input
-    # {"tool_name": "write_file", "input": {"path": "..."}}
-    json_pattern = r'"(?:tool_name|name)"\s*:\s*"(write_file|delete_file)".*?"path"\s*:\s*"([^"]+)"'
-    for match in re.finditer(json_pattern, full_output, re.DOTALL):
-        action_raw, path = match.groups()
-        action = "write" if action_raw == "write_file" else "delete"
-        if path not in seen_paths:
-            seen_paths.add(path)
-            edits.append((path, action))
+    for pattern, flags, case_insensitive in _FILE_EDIT_PATTERNS:
+        for match in re.finditer(pattern, full_output, flags):
+            action_raw, path = match.groups()
+            action_cmp = action_raw.lower() if case_insensitive else action_raw
+            action = "write" if action_cmp == "write_file" else "delete"
+            if path not in seen_paths:
+                seen_paths.add(path)
+                edits.append((path, action))
 
     return edits
 

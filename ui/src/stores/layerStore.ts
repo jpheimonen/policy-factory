@@ -17,7 +17,7 @@
  * - Initialize guard to prevent duplicate fetches
  */
 import { create } from "zustand";
-import { apiRequest } from "@/lib/apiClient.ts";
+import { apiRequest, extractErrorDetail } from "@/lib/apiClient.ts";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -74,14 +74,6 @@ function sortLayers(layers: LayerSummary[]): LayerSummary[] {
 /** Check if a slug is one of the 5 known layer slugs. */
 export function isValidLayerSlug(slug: string): boolean {
   return LAYER_ORDER.includes(slug);
-}
-
-/** Extract error detail from API errors */
-function extractErrorDetail(err: unknown, fallback: string): string {
-  if (err && typeof err === "object" && "detail" in err) {
-    return String((err as { detail: string }).detail);
-  }
-  return fallback;
 }
 
 // ── Store definition ─────────────────────────────────────────────────

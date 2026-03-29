@@ -13,7 +13,7 @@
  * live streaming of AI responses without polling.
  */
 import { create } from "zustand";
-import { apiRequest } from "@/lib/apiClient.ts";
+import { apiRequest, extractErrorDetail } from "@/lib/apiClient.ts";
 import type {
   ConversationStartedEvent,
   ConversationTextChunkEvent,
@@ -77,16 +77,6 @@ interface CreateConversationResponse {
 
 interface SendMessageResponse {
   message_id: string;
-}
-
-// ── Helper Functions ─────────────────────────────────────────────────
-
-/** Extract error detail from API errors */
-function extractErrorDetail(err: unknown, fallback: string): string {
-  if (err && typeof err === "object" && "detail" in err) {
-    return String((err as { detail: string }).detail);
-  }
-  return fallback;
 }
 
 // ── Store definition ─────────────────────────────────────────────────
