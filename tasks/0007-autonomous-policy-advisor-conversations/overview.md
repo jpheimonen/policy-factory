@@ -15,7 +15,7 @@ The AI becomes a co-author with its own intellectual backbone: it pushes back wh
 | [001](001.md) | Philosophy layer definition | [x] | Add philosophy to LAYERS list, update positions, add to orchestrator mappings, idea helpers, and create data directory |
 | [002](002.md) | Philosophy layer prompts | [x] | Create generator prompt and seed prompt for philosophy layer |
 | [003](003.md) | Philosophy layer UI | [x] | Add philosophy to layer constants, i18n strings, and theme colors |
-| [004](004.md) | Values prompt fix | [ ] | Update values generator prompt to enforce tension-pair format and fix technocratic consensus bias |
+| [004](004.md) | Values prompt fix | [x] | Update values generator prompt to enforce tension-pair format and fix technocratic consensus bias |
 | [005](005.md) | Conversation database schema | [ ] | Add conversations and messages tables to schema, create ConversationStoreMixin with CRUD operations |
 | [006](006.md) | Conversation events | [ ] | Define new event types for conversation lifecycle, streaming, file edits, and cascade pending |
 | [007](007.md) | Conversation agent config | [ ] | Add conversation role to agent config with full tool permissions |
