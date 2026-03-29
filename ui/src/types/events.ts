@@ -53,9 +53,16 @@ export type EventType =
   | "user_login"
   | "user_created"
   | "cascade_lock_acquired"
-  | "cascade_lock_released";
+  | "cascade_lock_released"
+  // Conversation (6)
+  | "conversation_started"
+  | "conversation_text_chunk"
+  | "conversation_file_edit"
+  | "conversation_turn_complete"
+  | "conversation_cascade_pending"
+  | "conversation_turn_error";
 
-export type EventCategory = "cascade" | "heartbeat" | "idea" | "seed" | "system";
+export type EventCategory = "cascade" | "conversation" | "heartbeat" | "idea" | "seed" | "system";
 
 // ── Base event interface ───────────────────────────────────────────
 
@@ -259,6 +266,46 @@ export interface CascadeLockReleasedEvent extends BaseEvent {
   cascade_id: string;
 }
 
+// ── Conversation events ────────────────────────────────────────────
+
+export interface ConversationStartedEvent extends BaseEvent {
+  event_type: "conversation_started";
+  conversation_id: string;
+}
+
+export interface ConversationTextChunkEvent extends BaseEvent {
+  event_type: "conversation_text_chunk";
+  conversation_id: string;
+  text: string;
+}
+
+export interface ConversationFileEditEvent extends BaseEvent {
+  event_type: "conversation_file_edit";
+  conversation_id: string;
+  layer_slug: string;
+  filename: string;
+  action: "write" | "delete";
+}
+
+export interface ConversationTurnCompleteEvent extends BaseEvent {
+  event_type: "conversation_turn_complete";
+  conversation_id: string;
+  message_id: string;
+  files_edited: string[];
+}
+
+export interface ConversationCascadePendingEvent extends BaseEvent {
+  event_type: "conversation_cascade_pending";
+  conversation_id: string;
+  starting_layer: string;
+}
+
+export interface ConversationTurnErrorEvent extends BaseEvent {
+  event_type: "conversation_turn_error";
+  conversation_id: string;
+  error_message: string;
+}
+
 // ── Discriminated union ────────────────────────────────────────────
 
 export type PolicyEvent =
@@ -297,7 +344,14 @@ export type PolicyEvent =
   | UserLoginEvent
   | UserCreatedEvent
   | CascadeLockAcquiredEvent
-  | CascadeLockReleasedEvent;
+  | CascadeLockReleasedEvent
+  // Conversation
+  | ConversationStartedEvent
+  | ConversationTextChunkEvent
+  | ConversationFileEditEvent
+  | ConversationTurnCompleteEvent
+  | ConversationCascadePendingEvent
+  | ConversationTurnErrorEvent;
 
 // ── Replay API response ────────────────────────────────────────────
 
@@ -354,6 +408,13 @@ const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   user_created: "system",
   cascade_lock_acquired: "system",
   cascade_lock_released: "system",
+  // Conversation
+  conversation_started: "conversation",
+  conversation_text_chunk: "conversation",
+  conversation_file_edit: "conversation",
+  conversation_turn_complete: "conversation",
+  conversation_cascade_pending: "conversation",
+  conversation_turn_error: "conversation",
 };
 
 export function getEventCategory(eventType: EventType): EventCategory {

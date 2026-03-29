@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Event type literals
 # ---------------------------------------------------------------------------
 
-EventCategory = Literal["cascade", "heartbeat", "idea", "seed", "system"]
+EventCategory = Literal["cascade", "conversation", "heartbeat", "idea", "seed", "system"]
 
 EventType = Literal[
     # Cascade lifecycle (7)
@@ -63,6 +63,13 @@ EventType = Literal[
     "user_created",
     "cascade_lock_acquired",
     "cascade_lock_released",
+    # Conversation (6)
+    "conversation_started",
+    "conversation_text_chunk",
+    "conversation_file_edit",
+    "conversation_turn_complete",
+    "conversation_cascade_pending",
+    "conversation_turn_error",
 ]
 
 # Mapping from event_type → category for efficient filtering
@@ -103,6 +110,13 @@ _EVENT_CATEGORY_MAP: dict[str, EventCategory] = {
     "user_created": "system",
     "cascade_lock_acquired": "system",
     "cascade_lock_released": "system",
+    # Conversation
+    "conversation_started": "conversation",
+    "conversation_text_chunk": "conversation",
+    "conversation_file_edit": "conversation",
+    "conversation_turn_complete": "conversation",
+    "conversation_cascade_pending": "conversation",
+    "conversation_turn_error": "conversation",
 }
 
 
@@ -637,6 +651,111 @@ class CascadeLockReleased(BaseEvent):
         return {
             **super().to_dict(),
             "cascade_id": self.cascade_id,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Conversation events (6)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ConversationStarted(BaseEvent):
+    """Emitted when a conversation turn begins processing."""
+
+    conversation_id: str = ""
+    event_type: str = field(default="conversation_started", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "conversation_id": self.conversation_id,
+        }
+
+
+@dataclass
+class ConversationTextChunk(BaseEvent):
+    """Emitted during streaming response generation."""
+
+    conversation_id: str = ""
+    text: str = ""
+    event_type: str = field(default="conversation_text_chunk", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "conversation_id": self.conversation_id,
+            "text": self.text,
+        }
+
+
+@dataclass
+class ConversationFileEdit(BaseEvent):
+    """Emitted when the agent writes or deletes a file."""
+
+    conversation_id: str = ""
+    layer_slug: str = ""
+    filename: str = ""
+    action: str = ""  # "write" or "delete"
+    event_type: str = field(default="conversation_file_edit", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "conversation_id": self.conversation_id,
+            "layer_slug": self.layer_slug,
+            "filename": self.filename,
+            "action": self.action,
+        }
+
+
+@dataclass
+class ConversationTurnComplete(BaseEvent):
+    """Emitted when the agent finishes its turn."""
+
+    conversation_id: str = ""
+    message_id: str = ""
+    files_edited: list[str] = field(default_factory=list)  # layer_slug/filename paths
+    event_type: str = field(default="conversation_turn_complete", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "conversation_id": self.conversation_id,
+            "message_id": self.message_id,
+            "files_edited": self.files_edited,
+        }
+
+
+@dataclass
+class ConversationCascadePending(BaseEvent):
+    """Emitted when conversation edits to foundational layers queue a cascade."""
+
+    conversation_id: str = ""
+    starting_layer: str = ""
+    event_type: str = field(default="conversation_cascade_pending", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "conversation_id": self.conversation_id,
+            "starting_layer": self.starting_layer,
+        }
+
+
+@dataclass
+class ConversationTurnError(BaseEvent):
+    """Emitted when the agent turn fails."""
+
+    conversation_id: str = ""
+    error_message: str = ""
+    event_type: str = field(default="conversation_turn_error", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "conversation_id": self.conversation_id,
+            "error_message": self.error_message,
         }
 
 
