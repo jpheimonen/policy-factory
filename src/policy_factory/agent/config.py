@@ -34,6 +34,7 @@ AgentRole = Literal[
     "idea-evaluator",
     "idea-generator",
     "seed",
+    "philosophy-seed",
     "values-seed",
     "strategic-seed",
     "tactical-seed",
@@ -69,6 +70,7 @@ _DEFAULT_MODELS: dict[str, str | None] = {
     "classifier": "gemini-2.5-flash-lite",
     "idea-evaluator": "gemini-2.5-flash",
     "idea-generator": "gemini-2.5-flash",
+    "philosophy-seed": "gemini-2.5-flash",
     "values-seed": "gemini-2.5-flash",
 }
 
@@ -84,6 +86,7 @@ _ENV_VAR_MAP: dict[str, str] = {
     "idea-evaluator": "POLICY_FACTORY_MODEL_IDEA_EVALUATOR",
     "idea-generator": "POLICY_FACTORY_MODEL_IDEA_GENERATOR",
     "seed": "POLICY_FACTORY_MODEL_SEED",
+    "philosophy-seed": "POLICY_FACTORY_MODEL_PHILOSOPHY_SEED",
     "values-seed": "POLICY_FACTORY_MODEL_VALUES_SEED",
     "strategic-seed": "POLICY_FACTORY_MODEL_STRATEGIC_SEED",
     "tactical-seed": "POLICY_FACTORY_MODEL_TACTICAL_SEED",
@@ -146,6 +149,8 @@ _ALLOWED_TOOLS_BY_ROLE: dict[str, list[str]] = {
     "heartbeat-sa-update": [MCP_SERVER_REF, "WebSearch"],
     # Seed agent needs file tools and web search
     "seed": [MCP_SERVER_REF, "WebSearch"],
+    # Philosophy seed uses model's knowledge for axioms, no tools needed
+    "philosophy-seed": [],
     # Values seed uses Claude's knowledge, no tools needed
     "values-seed": [],
     # Idea evaluator analyzes ideas, no tools needed
@@ -173,6 +178,7 @@ _TOOL_SET_BY_ROLE: dict[str, str] = {
     "heartbeat-triage": TOOL_SET_NONE,
     "heartbeat-sa-update": TOOL_SET_FULL,
     "seed": TOOL_SET_FULL,
+    "philosophy-seed": TOOL_SET_NONE,
     "values-seed": TOOL_SET_NONE,
     "idea-evaluator": TOOL_SET_NONE,
     "idea-generator": TOOL_SET_NONE,
@@ -195,6 +201,7 @@ _USE_SEARCH_BY_ROLE: dict[str, bool] = {
     "heartbeat-triage": True,
     "heartbeat-sa-update": False,
     "seed": False,
+    "philosophy-seed": False,
     "values-seed": False,
     "idea-evaluator": False,
     "idea-generator": False,

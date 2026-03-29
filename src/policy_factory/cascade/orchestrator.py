@@ -143,6 +143,7 @@ GenerationRunnerFn = Callable[
 # Map layer slug to prompt template file name.
 # Prompt files don't always match the layer slug directly.
 _SLUG_TO_PROMPT: dict[str, str] = {
+    "philosophy": "philosophy",
     "values": "values",
     "situational-awareness": "situational-awareness",
     "strategic-objectives": "strategic",

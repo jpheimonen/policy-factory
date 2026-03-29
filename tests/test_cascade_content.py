@@ -16,6 +16,7 @@ from policy_factory.cascade.content import (
 def data_dir(tmp_path: Path) -> Path:
     """Create a temporary data directory with layer subdirectories."""
     for layer in [
+        "philosophy",
         "values",
         "situational-awareness",
         "strategic-objectives",
@@ -131,8 +132,8 @@ class TestGatherCrossLayerContext:
         assert "Strategic Objectives" in context
 
     def test_bottom_layer_has_no_below(self, populated_data_dir: Path):
-        """The bottom layer (values) has no layer below."""
-        context = gather_cross_layer_context(populated_data_dir, "values")
+        """The bottom layer (philosophy) has no layer below."""
+        context = gather_cross_layer_context(populated_data_dir, "philosophy")
         # Should still mention the layer above
         assert "Layer Above" in context
         assert "Layer Below" not in context
@@ -157,8 +158,17 @@ class TestGatherContextBelow:
 
     def test_values_returns_empty_string(self, data_dir: Path):
         """Values is the bottom layer — no layers below, returns empty string."""
-        result = gather_context_below(data_dir, "values")
+        result = gather_context_below(data_dir, "philosophy")
         assert result == ""
+
+    def test_values_includes_philosophy_content(self, populated_data_dir: Path):
+        """Values layer context includes content from the philosophy layer below."""
+        # Add philosophy content
+        (populated_data_dir / "philosophy" / "README.md").write_text(
+            "# Philosophy\n\nEpistemological commitments for policy reasoning."
+        )
+        result = gather_context_below(populated_data_dir, "values")
+        assert "Philosophy" in result
 
     def test_sa_includes_values_content(self, populated_data_dir: Path):
         """SA layer context includes content from the values layer below."""
@@ -178,8 +188,15 @@ class TestGatherContextBelow:
         # SA content
         assert "Situational Awareness" in result
 
-    def test_policies_includes_all_four_layers(self, populated_data_dir: Path):
-        """Policies context includes content from all 4 layers below."""
+    def test_policies_includes_all_five_layers(self, populated_data_dir: Path):
+        """Policies context includes content from all 5 layers below."""
+        # Add philosophy content
+        (populated_data_dir / "philosophy" / "README.md").write_text(
+            "# Philosophy\n\nEpistemological commitments."
+        )
+        (populated_data_dir / "philosophy" / "axiom-1.md").write_text(
+            "---\ntitle: Axiom One\nstatus: active\n---\nFirst normative axiom."
+        )
         # Add strategic and tactical content
         (populated_data_dir / "strategic-objectives" / "README.md").write_text(
             "# Strategic\n\nStrategic goals."
@@ -195,10 +212,12 @@ class TestGatherContextBelow:
         )
 
         result = gather_context_below(populated_data_dir, "policies")
+        assert "Philosophy" in result
         assert "Values" in result
         assert "Situational Awareness" in result
         assert "Strategic Objectives" in result
         assert "Tactical Objectives" in result
+        assert "Axiom One" in result
         assert "Goal One" in result
         assert "Tactic One" in result
 
@@ -239,26 +258,47 @@ class TestGatherContextBelow:
 class TestCheckPrerequisites:
     """Test the check_prerequisites function."""
 
-    def test_values_returns_empty_list(self, data_dir: Path):
-        """Values is the bottom layer — no prerequisites, returns empty list."""
-        result = check_prerequisites(data_dir, "values")
+    def test_philosophy_returns_empty_list(self, data_dir: Path):
+        """Philosophy is the bottom layer — no prerequisites, returns empty list."""
+        result = check_prerequisites(data_dir, "philosophy")
         assert result == []
 
-    def test_sa_returns_empty_when_values_has_items(
+    def test_values_returns_empty_when_philosophy_has_items(
         self, populated_data_dir: Path
     ):
-        """SA prerequisites are met when the values layer has items."""
+        """Values prerequisites are met when the philosophy layer has items."""
+        # Add philosophy item
+        (populated_data_dir / "philosophy" / "epistemology.md").write_text(
+            "---\ntitle: Epistemology\nstatus: active\n---\nHow we know things."
+        )
+        result = check_prerequisites(populated_data_dir, "values")
+        assert result == []
+
+    def test_values_returns_philosophy_when_empty(self, data_dir: Path):
+        """Values returns ['philosophy'] when the philosophy layer has no items."""
+        result = check_prerequisites(data_dir, "values")
+        assert result == ["philosophy"]
+
+    def test_sa_returns_empty_when_philosophy_and_values_have_items(
+        self, populated_data_dir: Path
+    ):
+        """SA prerequisites are met when the philosophy and values layers have items."""
+        # Add philosophy item
+        (populated_data_dir / "philosophy" / "epistemology.md").write_text(
+            "---\ntitle: Epistemology\nstatus: active\n---\nHow we know things."
+        )
         result = check_prerequisites(populated_data_dir, "situational-awareness")
         assert result == []
 
-    def test_sa_returns_values_when_empty(self, data_dir: Path):
-        """SA returns ['values'] when the values layer has no items."""
+    def test_sa_returns_philosophy_and_values_when_empty(self, data_dir: Path):
+        """SA returns ['philosophy', 'values'] when both layers have no items."""
         result = check_prerequisites(data_dir, "situational-awareness")
-        assert result == ["values"]
+        assert result == ["philosophy", "values"]
 
     def test_strategic_returns_all_empty_layers(self, data_dir: Path):
         """Strategic-objectives returns all empty layers below when none are populated."""
         result = check_prerequisites(data_dir, "strategic-objectives")
+        assert "philosophy" in result
         assert "values" in result
         assert "situational-awareness" in result
 
@@ -266,6 +306,10 @@ class TestCheckPrerequisites:
         self, populated_data_dir: Path
     ):
         """Strategic-objectives returns empty list when all layers below have items."""
+        # Add philosophy item
+        (populated_data_dir / "philosophy" / "epistemology.md").write_text(
+            "---\ntitle: Epistemology\nstatus: active\n---\nHow we know things."
+        )
         # values already has items; add SA items
         (populated_data_dir / "situational-awareness" / "threat-1.md").write_text(
             "---\ntitle: Threat One\nstatus: active\n---\nA geopolitical threat."
@@ -277,9 +321,10 @@ class TestCheckPrerequisites:
 
     def test_policies_with_partial_population(self, populated_data_dir: Path):
         """Policies with only some layers populated returns the empty slugs."""
-        # values has items, SA has no items, strategic and tactical are empty
+        # values has items, philosophy/SA/strategic/tactical are empty
         result = check_prerequisites(populated_data_dir, "policies")
-        # values is populated, SA is NOT (has only narrative, no items)
+        # values is populated, others are NOT
+        assert "philosophy" in result
         assert "values" not in result
         assert "situational-awareness" in result
         assert "strategic-objectives" in result

@@ -26,20 +26,24 @@ class LayerInfo:
 
     slug: str
     display_name: str
-    position: int  # 1 = bottom (values), 5 = top (policies)
+    position: int  # 1 = bottom (philosophy), 6 = top (policies)
 
 
 # Ordered bottom-to-top
 LAYERS: list[LayerInfo] = [
-    LayerInfo(slug="values", display_name="Values", position=1),
-    LayerInfo(slug="situational-awareness", display_name="Situational Awareness", position=2),
-    LayerInfo(slug="strategic-objectives", display_name="Strategic Objectives", position=3),
-    LayerInfo(slug="tactical-objectives", display_name="Tactical Objectives", position=4),
-    LayerInfo(slug="policies", display_name="Policies", position=5),
+    LayerInfo(slug="philosophy", display_name="Philosophy", position=1),
+    LayerInfo(slug="values", display_name="Values", position=2),
+    LayerInfo(slug="situational-awareness", display_name="Situational Awareness", position=3),
+    LayerInfo(slug="strategic-objectives", display_name="Strategic Objectives", position=4),
+    LayerInfo(slug="tactical-objectives", display_name="Tactical Objectives", position=5),
+    LayerInfo(slug="policies", display_name="Policies", position=6),
 ]
 
 LAYER_SLUGS: set[str] = {layer.slug for layer in LAYERS}
 _LAYER_BY_SLUG: dict[str, LayerInfo] = {layer.slug: layer for layer in LAYERS}
+
+# Foundational layers (positions 1-3) that trigger cascade pending when edited via conversation
+FOUNDATIONAL_LAYERS: set[str] = {"philosophy", "values", "situational-awareness"}
 
 
 def get_layer(slug: str) -> LayerInfo | None:

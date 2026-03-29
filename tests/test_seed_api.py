@@ -102,7 +102,7 @@ class TestSeedStatus:
         assert resp.status_code == 200
         data = resp.json()
         layers = data["layers"]
-        assert len(layers) == 5
+        assert len(layers) == 6
         for entry in layers:
             assert entry["seeded"] is False
             assert entry["count"] == 0
@@ -198,15 +198,16 @@ class TestSeedStatus:
         assert sa["seeded"] is True
         assert sa["count"] == 2
 
-    def test_response_contains_exactly_five_layers_in_order(
+    def test_response_contains_exactly_six_layers_in_order(
         self, client: TestClient, auth_headers: dict[str, str]
     ) -> None:
-        """Response contains exactly 5 layers in canonical order."""
+        """Response contains exactly 6 layers in canonical order."""
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
         layers = resp.json()["layers"]
-        assert len(layers) == 5
+        assert len(layers) == 6
         expected_slugs = [
+            "philosophy",
             "values",
             "situational-awareness",
             "strategic-objectives",
@@ -475,7 +476,8 @@ class TestSeedStrategicObjectives:
         auth_headers: dict[str, str],
         data_dir: Path,
     ) -> None:
-        """Returns success when values and SA both have items."""
+        """Returns success when philosophy, values and SA all have items."""
+        _populate_layer(data_dir, "philosophy")
         _populate_layer(data_dir, "values")
         _populate_layer(data_dir, "situational-awareness")
 
@@ -516,7 +518,8 @@ class TestSeedTacticalObjectives:
         auth_headers: dict[str, str],
         data_dir: Path,
     ) -> None:
-        """Fails when strategic-objectives is empty even if values and SA are populated."""
+        """Fails when strategic-objectives is empty even if philosophy, values and SA are populated."""
+        _populate_layer(data_dir, "philosophy")
         _populate_layer(data_dir, "values")
         _populate_layer(data_dir, "situational-awareness")
         # strategic-objectives deliberately not populated
@@ -536,6 +539,7 @@ class TestSeedTacticalObjectives:
         data_dir: Path,
     ) -> None:
         """Fails when any prerequisite is empty."""
+        _populate_layer(data_dir, "philosophy")
         _populate_layer(data_dir, "situational-awareness")
         _populate_layer(data_dir, "strategic-objectives")
 
@@ -571,7 +575,8 @@ class TestSeedTacticalObjectives:
         auth_headers: dict[str, str],
         data_dir: Path,
     ) -> None:
-        """Returns success when all 3 prerequisite layers have items."""
+        """Returns success when all 4 prerequisite layers have items."""
+        _populate_layer(data_dir, "philosophy")
         _populate_layer(data_dir, "values")
         _populate_layer(data_dir, "situational-awareness")
         _populate_layer(data_dir, "strategic-objectives")
@@ -614,6 +619,7 @@ class TestSeedPolicies:
         data_dir: Path,
     ) -> None:
         """Fails when tactical-objectives is empty even if all others are populated."""
+        _populate_layer(data_dir, "philosophy")
         _populate_layer(data_dir, "values")
         _populate_layer(data_dir, "situational-awareness")
         _populate_layer(data_dir, "strategic-objectives")
@@ -633,6 +639,7 @@ class TestSeedPolicies:
     ) -> None:
         """Fails when any single prerequisite layer is empty."""
         # Populate all except SA
+        _populate_layer(data_dir, "philosophy")
         _populate_layer(data_dir, "values")
         _populate_layer(data_dir, "strategic-objectives")
         _populate_layer(data_dir, "tactical-objectives")
@@ -665,7 +672,8 @@ class TestSeedPolicies:
         auth_headers: dict[str, str],
         data_dir: Path,
     ) -> None:
-        """Returns success when all 4 prerequisite layers have items."""
+        """Returns success when all 5 prerequisite layers have items."""
+        _populate_layer(data_dir, "philosophy")
         _populate_layer(data_dir, "values")
         _populate_layer(data_dir, "situational-awareness")
         _populate_layer(data_dir, "strategic-objectives")

@@ -12,7 +12,7 @@ The AI becomes a co-author with its own intellectual backbone: it pushes back wh
 
 | Step | Title | Done | Description |
 |------|-------|------|-------------|
-| [001](001.md) | Philosophy layer definition | [ ] | Add philosophy to LAYERS list, update positions, add to orchestrator mappings, idea helpers, and create data directory |
+| [001](001.md) | Philosophy layer definition | [x] | Add philosophy to LAYERS list, update positions, add to orchestrator mappings, idea helpers, and create data directory |
 | [002](002.md) | Philosophy layer prompts | [ ] | Create generator prompt and seed prompt for philosophy layer |
 | [003](003.md) | Philosophy layer UI | [ ] | Add philosophy to layer constants, i18n strings, and theme colors |
 | [004](004.md) | Values prompt fix | [ ] | Update values generator prompt to enforce tension-pair format and fix technocratic consensus bias |

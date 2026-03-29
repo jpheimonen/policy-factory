@@ -17,6 +17,7 @@ from policy_factory.ideas.helpers import (
 def data_dir(tmp_path: Path) -> Path:
     """Create a temporary data directory with layer subdirectories."""
     layer_slugs = [
+        "philosophy",
         "values",
         "situational-awareness",
         "strategic-objectives",
@@ -42,8 +43,9 @@ def data_dir(tmp_path: Path) -> Path:
 class TestGatherStackSummary:
     """Tests for gather_stack_summary()."""
 
-    def test_returns_all_five_layers(self, data_dir: Path) -> None:
+    def test_returns_all_six_layers(self, data_dir: Path) -> None:
         summaries = gather_stack_summary(data_dir)
+        assert "philosophy_summary" in summaries
         assert "values_summary" in summaries
         assert "sa_summary" in summaries
         assert "strategic_summary" in summaries

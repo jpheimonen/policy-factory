@@ -1,7 +1,7 @@
 """Stack summary helper and score parsing utilities for the idea pipeline.
 
 Provides:
-- ``gather_stack_summary`` — Assembles brief summaries of all 5 layers
+- ``gather_stack_summary`` — Assembles brief summaries of all 6 layers
   for use in evaluation and generation prompts.
 - ``parse_evaluation_scores`` — Extracts 6-axis numeric scores from the
   evaluation agent's output text.
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Maps layer slugs to template variable names used in prompts.
 _SLUG_TO_VAR: dict[str, str] = {
+    "philosophy": "philosophy_summary",
     "values": "values_summary",
     "situational-awareness": "sa_summary",
     "strategic-objectives": "strategic_summary",
@@ -29,9 +30,9 @@ _SLUG_TO_VAR: dict[str, str] = {
 
 
 def gather_stack_summary(data_dir: Path) -> dict[str, str]:
-    """Gather brief summaries of all 5 layers.
+    """Gather brief summaries of all 6 layers.
 
-    For each layer in hierarchical order (values to policies):
+    For each layer in hierarchical order (philosophy to policies):
     - Reads the narrative summary (README.md).
     - Reads item titles from the layer (not full content).
     - Assembles a brief per-layer summary.
@@ -39,6 +40,7 @@ def gather_stack_summary(data_dir: Path) -> dict[str, str]:
     Returns a dict mapping template variable names to summary text::
 
         {
+            "philosophy_summary": "...",
             "values_summary": "...",
             "sa_summary": "...",
             "strategic_summary": "...",
@@ -86,7 +88,7 @@ def gather_stack_summary(data_dir: Path) -> dict[str, str]:
 
 
 def gather_stack_summary_text(data_dir: Path) -> str:
-    """Gather all 5 layer summaries as a single formatted text block.
+    """Gather all 6 layer summaries as a single formatted text block.
 
     Convenience wrapper around ``gather_stack_summary`` that combines
     all summaries into one text string.

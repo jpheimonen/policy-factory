@@ -3,6 +3,8 @@
 The seed endpoints trigger specialized agents to populate the layers
 of the policy stack:
 
+- POST /api/seed/philosophy — Uses model's knowledge to synthesize
+  epistemological commitments and normative axioms (no tools needed)
 - POST /api/seed/values — Uses Claude's knowledge to synthesize axiomatic
   Finnish policy values (no tools needed, uses training data)
 - POST /api/seed/ — Uses web search to research Finland's current tech
@@ -105,6 +107,14 @@ class ValuesSeedResponse(BaseModel):
 
     success: bool
     values_created: int = 0
+    message: str = ""
+
+
+class PhilosophySeedResponse(BaseModel):
+    """Response for the philosophy seed endpoint."""
+
+    success: bool
+    items_created: int = 0
     message: str = ""
 
 
@@ -431,6 +441,140 @@ async def seed_values(
     return ValuesSeedResponse(
         success=True,
         values_created=values_created,
+        message=msg,
+    )
+
+
+@router.post("/philosophy")
+async def seed_philosophy(
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+) -> PhilosophySeedResponse:
+    """Seed the philosophy layer with epistemological commitments and normative axioms.
+
+    Uses an agent with model's training knowledge (no tools) to synthesize
+    foundational philosophical reasoning axioms. Clears any existing philosophy
+    items before writing new ones.
+
+    This endpoint is re-runnable — calling it multiple times will replace
+    the existing philosophy items each time.
+
+    Returns:
+        PhilosophySeedResponse with success status and count of items created.
+    """
+    from policy_factory.events import SeedCompleted, SeedProgress, SeedStarted
+
+    data_dir = get_data_dir()
+    emitter = get_event_emitter()
+
+    await emitter.emit(SeedStarted(
+        layer_slug="philosophy",
+        agent_label="Philosophy layer seed agent",
+    ))
+
+    from policy_factory.agent.prompts import build_agent_prompt
+
+    prompt = build_agent_prompt("seed", "philosophy")
+
+    await emitter.emit(SeedProgress(
+        layer_slug="philosophy",
+        step="agent_running",
+        message="Running philosophy seed agent…",
+    ))
+
+    result, error_msg = await _run_seed_agent(
+        prompt=prompt,
+        agent_role="philosophy-seed",
+        agent_label="Philosophy layer seed agent",
+        target_layer="philosophy",
+    )
+    if error_msg is not None:
+        await emitter.emit(SeedCompleted(
+            layer_slug="philosophy", success=False, message=error_msg,
+        ))
+        return PhilosophySeedResponse(success=False, message=error_msg)
+
+    # Parse the agent output to extract individual philosophy items
+    await emitter.emit(SeedProgress(
+        layer_slug="philosophy",
+        step="parsing",
+        message="Parsing agent output…",
+    ))
+    parsed_items = _parse_values_output(result.full_output)
+
+    if not parsed_items:
+        msg = (
+            "Failed to parse any philosophy items from agent output. "
+            "The agent may have produced malformed output."
+        )
+        await emitter.emit(SeedCompleted(
+            layer_slug="philosophy", success=False, message=msg,
+        ))
+        return PhilosophySeedResponse(success=False, message=msg)
+
+    # Clear existing philosophy items before writing new ones
+    existing_items = list_items(data_dir, "philosophy")
+    for item in existing_items:
+        try:
+            delete_item(data_dir, "philosophy", item.filename)
+        except Exception:
+            logger.warning("Failed to delete existing philosophy item %s", item.filename)
+
+    # Write each parsed item as a markdown file
+    await emitter.emit(SeedProgress(
+        layer_slug="philosophy",
+        step="writing",
+        message=f"Writing {len(parsed_items)} philosophy items…",
+    ))
+    items_created = 0
+    seen_slugs: set[str] = set()
+
+    for frontmatter, body in parsed_items:
+        title = frontmatter.get("title", "")
+        slug = _slugify(title)
+
+        # Handle duplicate slugs by appending a counter
+        base_slug = slug
+        counter = 2
+        while slug in seen_slugs:
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+        seen_slugs.add(slug)
+
+        filename = f"{slug}.md"
+
+        try:
+            write_item(
+                data_dir,
+                "philosophy",
+                filename,
+                frontmatter,
+                body,
+                modified_by="philosophy-seed-agent",
+            )
+            items_created += 1
+        except Exception as exc:
+            logger.warning("Failed to write philosophy item %s: %s", filename, exc)
+
+    # Commit changes to git
+    await emitter.emit(SeedProgress(
+        layer_slug="philosophy",
+        step="committing",
+        message="Committing to git…",
+    ))
+    try:
+        commit_changes(data_dir, f"Seed philosophy layer ({items_created} items)")
+    except Exception:
+        logger.warning("Git commit failed after philosophy seeding", exc_info=True)
+
+    msg = f"Philosophy layer seeded successfully with {items_created} items."
+    await emitter.emit(SeedCompleted(
+        layer_slug="philosophy", success=True, message=msg,
+        items_created=items_created,
+    ))
+
+    return PhilosophySeedResponse(
+        success=True,
+        items_created=items_created,
         message=msg,
     )
 

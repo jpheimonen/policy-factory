@@ -89,25 +89,25 @@ def auth_header(token: str) -> dict:
 class TestListLayers:
     """Tests for GET /api/layers/."""
 
-    def test_returns_all_5_layers(
+    def test_returns_all_6_layers(
         self, client: TestClient, admin_user: dict
     ) -> None:
-        """Returns all 5 layers."""
+        """Returns all 6 layers."""
         resp = client.get("/api/layers/", headers=auth_header(admin_user["token"]))
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) == 5
+        assert len(data) == 6
 
     def test_layers_in_hierarchical_order(
         self, client: TestClient, admin_user: dict
     ) -> None:
-        """Layers are in hierarchical order: values at position 0, policies at position 4."""
+        """Layers are in hierarchical order: philosophy at position 0, policies at position 5."""
         resp = client.get("/api/layers/", headers=auth_header(admin_user["token"]))
         data = resp.json()
-        assert data[0]["slug"] == "values"
+        assert data[0]["slug"] == "philosophy"
         assert data[0]["position"] == 1
-        assert data[4]["slug"] == "policies"
-        assert data[4]["position"] == 5
+        assert data[5]["slug"] == "policies"
+        assert data[5]["position"] == 6
 
     def test_includes_item_count(
         self, client: TestClient, admin_user: dict, data_dir: Path
