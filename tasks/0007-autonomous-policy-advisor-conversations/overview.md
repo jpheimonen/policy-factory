@@ -23,7 +23,7 @@ The AI becomes a co-author with its own intellectual backbone: it pushes back wh
 | [009](009.md) | Conversation runner | [x] | Create runner module that orchestrates conversation turns: prompt assembly, agent execution, file edit detection, git commit |
 | [010](010.md) | Conversation system prompt | [x] | Create the conversation agent system prompt encoding tiered epistemic authority, hold-your-ground behavior, and anti-slop standards |
 | [011](011.md) | Conversation API endpoints | [x] | Create REST router with endpoints for conversation CRUD and message sending |
-| [012](012.md) | Conversation store (frontend) | [ ] | Create Zustand store for conversation state, messages, streaming, and pending cascade flag |
+| [012](012.md) | Conversation store (frontend) | [x] | Create Zustand store for conversation state, messages, streaming, and pending cascade flag |
 | [013](013.md) | Conversation event dispatch | [ ] | Add conversation event handlers to useEventDispatch, routing to conversation store |
 | [014](014.md) | Conversation sidebar component | [ ] | Create right-aligned sliding panel with message list, input, streaming support, and pending cascade banner |
 | [015](015.md) | Item page sidebar integration | [ ] | Add conversation toggle to ItemDetailPage, adjust layout for sidebar, wire up live content refresh on file edits |
