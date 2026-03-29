@@ -14,6 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from policy_factory.auth import decode_access_token
 from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
+from datetime import datetime, timezone
 
 if TYPE_CHECKING:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -321,7 +322,7 @@ _LOCAL_ADMIN_USER = UserPublic(
     id="local-admin",
     email="admin@local",
     role="admin",
-    created_at="2000-01-01T00:00:00Z",
+    created_at=datetime(2000, 1, 1, tzinfo=timezone.utc),
 )
 
 

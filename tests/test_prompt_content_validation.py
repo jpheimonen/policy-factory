@@ -75,6 +75,7 @@ _TEMPLATE_VARS: dict[tuple[str, str], dict[str, str]] = {
         "scoping_context": "test scoping context",
     },
     # Seed
+    ("seed", "philosophy"): {},  # No template variables
     ("seed", "values"): {},
     ("seed", "seed"): {
         "current_date": "2025-01-01",
@@ -93,6 +94,11 @@ _TEMPLATE_VARS: dict[tuple[str, str], dict[str, str]] = {
         "context_below": "test context below",
     },
     # Generators
+    ("generators", "philosophy"): {
+        "layer_content": "test layer content",
+        "feedback_memos": "test feedback memos",
+        "cross_layer_context": "test cross-layer context",
+    },
     ("generators", "values"): {
         "layer_content": "test layer content",
         "feedback_memos": "test feedback memos",
@@ -164,6 +170,8 @@ _TEMPLATE_VARS: dict[tuple[str, str], dict[str, str]] = {
         "libertarian_assessment": "test libertarian",
         "green_assessment": "test green",
     },
+    # Conversation
+    ("conversation", "system"): {},  # No template variables
 }
 
 

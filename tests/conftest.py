@@ -9,6 +9,7 @@ Provides reusable fixtures for:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,21 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+
+
+# ---------------------------------------------------------------------------
+# Global test environment setup
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _disable_local_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure local mode is disabled for all tests.
+
+    The .env file may have POLICY_FACTORY_LOCAL_MODE=true for development,
+    but tests should always use real authentication flows.
+    """
+    monkeypatch.delenv("POLICY_FACTORY_LOCAL_MODE", raising=False)
 
 import policy_factory.auth as auth_mod
 from policy_factory.auth import create_access_token, hash_password

@@ -617,8 +617,8 @@ class TestSeedStatusEndpoint:
         assert resp.status_code == 200
         layers = resp.json()["layers"]
 
-        # All 5 layers should be empty
-        assert len(layers) == 5
+        # All 6 layers should be empty
+        assert len(layers) == 6
         for entry in layers:
             assert entry["seeded"] is False
             assert entry["count"] == 0
@@ -700,16 +700,16 @@ class TestSeedStatusEndpoint:
         assert sa["seeded"] is True
         assert sa["count"] == 2
 
-    def test_status_includes_all_five_layers(
+    def test_status_includes_all_six_layers(
         self,
         client: TestClient,
         auth_headers: dict[str, str],
     ) -> None:
-        """Response contains exactly 5 layer entries with correct slugs."""
+        """Response contains exactly 6 layer entries with correct slugs."""
         resp = client.get("/api/seed/status", headers=auth_headers)
         assert resp.status_code == 200
         layers = resp.json()["layers"]
-        assert len(layers) == 5
+        assert len(layers) == 6
         expected_slugs = [layer.slug for layer in LAYERS]
         actual_slugs = [entry["slug"] for entry in layers]
         assert actual_slugs == expected_slugs
