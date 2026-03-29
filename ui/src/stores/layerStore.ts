@@ -3,7 +3,7 @@
  *
  * Manages layer listing data and per-layer detail data fetched from the backend API.
  * Provides layers in their canonical hierarchical order
- * (Values → Situational Awareness → Strategic Objectives → Tactical Objectives → Policies)
+ * (Philosophy → Values → Situational Awareness → Strategic Objectives → Tactical Objectives → Policies)
  * regardless of the order returned by the API.
  *
  * The store holds two data slices:
@@ -54,6 +54,7 @@ export interface FeedbackMemo {
 
 /** Canonical layer order (bottom to top) */
 const LAYER_ORDER: readonly string[] = [
+  "philosophy",
   "values",
   "situational-awareness",
   "strategic-objectives",
