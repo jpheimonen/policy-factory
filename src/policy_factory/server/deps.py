@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -14,7 +15,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from policy_factory.auth import decode_access_token
 from policy_factory.store import PolicyStore
 from policy_factory.store.auth import UserPublic
-from datetime import datetime, timezone
 
 if TYPE_CHECKING:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler

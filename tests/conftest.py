@@ -9,7 +9,6 @@ Provides reusable fixtures for:
 
 from __future__ import annotations
 
-import os
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -18,6 +17,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+import policy_factory.auth as auth_mod
+from policy_factory.auth import create_access_token, hash_password
+from policy_factory.data.init import initialize_data_directory
+from policy_factory.data.layers import LAYER_SLUGS
+from policy_factory.events import EventEmitter
+from policy_factory.server.app import create_app
+from policy_factory.server.ws import ConnectionManager
+from policy_factory.store import PolicyStore
 
 # ---------------------------------------------------------------------------
 # Global test environment setup
@@ -32,15 +39,6 @@ def _disable_local_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     but tests should always use real authentication flows.
     """
     monkeypatch.delenv("POLICY_FACTORY_LOCAL_MODE", raising=False)
-
-import policy_factory.auth as auth_mod
-from policy_factory.auth import create_access_token, hash_password
-from policy_factory.data.init import initialize_data_directory
-from policy_factory.data.layers import LAYER_SLUGS
-from policy_factory.events import EventEmitter
-from policy_factory.server.app import create_app
-from policy_factory.server.ws import ConnectionManager
-from policy_factory.store import PolicyStore
 
 # ---------------------------------------------------------------------------
 # Basic fixtures (preserved from original for backward compatibility)
