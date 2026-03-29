@@ -21,7 +21,7 @@ The AI becomes a co-author with its own intellectual backbone: it pushes back wh
 | [007](007.md) | Conversation agent config | [x] | Add conversation role to agent config with full tool permissions |
 | [008](008.md) | Cascade pending mechanism | [x] | Add pending cascade tracking that differs from normal queue — persists until user triggers or dismisses |
 | [009](009.md) | Conversation runner | [x] | Create runner module that orchestrates conversation turns: prompt assembly, agent execution, file edit detection, git commit |
-| [010](010.md) | Conversation system prompt | [ ] | Create the conversation agent system prompt encoding tiered epistemic authority, hold-your-ground behavior, and anti-slop standards |
+| [010](010.md) | Conversation system prompt | [x] | Create the conversation agent system prompt encoding tiered epistemic authority, hold-your-ground behavior, and anti-slop standards |
 | [011](011.md) | Conversation API endpoints | [ ] | Create REST router with endpoints for conversation CRUD and message sending |
 | [012](012.md) | Conversation store (frontend) | [ ] | Create Zustand store for conversation state, messages, streaming, and pending cascade flag |
 | [013](013.md) | Conversation event dispatch | [ ] | Add conversation event handlers to useEventDispatch, routing to conversation store |
