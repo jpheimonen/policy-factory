@@ -429,7 +429,8 @@ async def _seed_foundational_layer(
     except Exception:
         logger.warning("Git commit failed after %s seeding", layer_slug, exc_info=True)
 
-    msg = f"{layer_slug.replace('-', ' ').title()} layer seeded successfully with {items_created} items."
+    layer_name = layer_slug.replace('-', ' ').title()
+    msg = f"{layer_name} layer seeded successfully with {items_created} items."
     await emitter.emit(SeedCompleted(
         layer_slug=layer_slug, success=True, message=msg, items_created=items_created,
     ))

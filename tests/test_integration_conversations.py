@@ -11,7 +11,6 @@ import asyncio
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,7 +34,6 @@ from policy_factory.events import (
 from policy_factory.server.app import create_app
 from policy_factory.server.ws import ConnectionManager
 from policy_factory.store import PolicyStore
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -188,7 +186,8 @@ def _make_mock_conversation_agent_result(
     if file_edits:
         for path, action in file_edits:
             tool_name = "write_file" if action == "write" else "delete_file"
-            full_output += f'\n<tool_use name="{tool_name}">{{"path": "{path}", "content": "..."}}</tool_use>'
+            tool_xml = f'<tool_use name="{tool_name}">{{"path": "{path}", "content": "..."}}'
+            full_output += f"\n{tool_xml}</tool_use>"
 
     return AgentResult(
         is_error=False,
@@ -236,7 +235,7 @@ def mock_conversation_agent(
                     layer_slug, filename = path.split("/", 1)
                     file_path = data_dir / layer_slug / filename
                     file_path.parent.mkdir(parents=True, exist_ok=True)
-                    file_path.write_text(f"---\ntitle: Mock Item\n---\n\nMock content.")
+                    file_path.write_text("---\ntitle: Mock Item\n---\n\nMock content.")
                 elif action == "delete" and "/" in path:
                     layer_slug, filename = path.split("/", 1)
                     file_path = data_dir / layer_slug / filename
@@ -1203,7 +1202,7 @@ class TestPhilosophyLayerInCascade:
 
     def test_philosophy_layer_position_1(self) -> None:
         """Philosophy layer is at position 1 (bottommost)."""
-        philosophy = next((l for l in LAYERS if l.slug == "philosophy"), None)
+        philosophy = next((lyr for lyr in LAYERS if lyr.slug == "philosophy"), None)
         assert philosophy is not None
         assert philosophy.position == 1
 
@@ -1225,7 +1224,7 @@ class TestPhilosophyLayerInCascade:
             "tactical-objectives",
             "policies",
         ]
-        actual_order = [layer.slug for layer in sorted(LAYERS, key=lambda l: l.position)]
+        actual_order = [layer.slug for layer in sorted(LAYERS, key=lambda lyr: lyr.position)]
         assert actual_order == expected_order
 
     def test_cascade_from_philosophy_all_layers(self) -> None:

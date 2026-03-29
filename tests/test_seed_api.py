@@ -518,7 +518,10 @@ class TestSeedTacticalObjectives:
         auth_headers: dict[str, str],
         data_dir: Path,
     ) -> None:
-        """Fails when strategic-objectives is empty even if philosophy, values and SA are populated."""
+        """Fails when strategic-objectives is empty.
+
+        Tests that seeding fails even if philosophy, values and SA are populated.
+        """
         _populate_layer(data_dir, "philosophy")
         _populate_layer(data_dir, "values")
         _populate_layer(data_dir, "situational-awareness")
