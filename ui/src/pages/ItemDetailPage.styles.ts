@@ -5,7 +5,7 @@
  * Uses theme tokens for all colours, spacing, fonts, and borders.
  * Follows the co-located styles pattern consistent with LayerDetailPage.styles.ts.
  */
-import styled from "styled-components";
+import styled, { css } from "styled-components";
 import type { Theme } from "@/styles/theme.ts";
 
 // ── Layer color helper ───────────────────────────────────────────────
@@ -24,12 +24,50 @@ function getLayerColors(theme: Theme, slug: string) {
 
 // ── Page layout ──────────────────────────────────────────────────────
 
-export const PageWrapper = styled.div`
+/** Outer container that handles the sidebar layout shift */
+export const PageContainer = styled.div<{ $sidebarOpen: boolean }>`
+  display: flex;
+  justify-content: center;
+  transition: padding-right ${({ theme }) => theme.transitions.normal};
+
+  /* When sidebar is open, add padding to shift content left */
+  ${({ $sidebarOpen }) =>
+    $sidebarOpen &&
+    css`
+      padding-right: 420px;
+
+      @media (max-width: 1200px) {
+        padding-right: 360px;
+      }
+
+      @media (max-width: 900px) {
+        /* On smaller screens, sidebar overlays instead of pushing */
+        padding-right: 0;
+      }
+    `}
+`;
+
+export const PageWrapper = styled.div<{ $sidebarOpen?: boolean }>`
   max-width: 800px;
+  width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: ${({ theme }) => theme.spacing.xl};
+  transition: max-width ${({ theme }) => theme.transitions.normal};
+
+  /* When sidebar is open, allow content to be slightly narrower if needed */
+  ${({ $sidebarOpen }) =>
+    $sidebarOpen &&
+    css`
+      @media (max-width: 1400px) {
+        max-width: 700px;
+      }
+
+      @media (max-width: 1200px) {
+        max-width: 600px;
+      }
+    `}
 `;
 
 // ── Page header ──────────────────────────────────────────────────────
@@ -310,4 +348,110 @@ export const ReadOnlyValue = styled.span`
   background: ${({ theme }) => theme.colors.bg.tertiary};
   border: 1px solid ${({ theme }) => theme.colors.border.subtle};
   border-radius: ${({ theme }) => theme.radii.md};
+`;
+
+// ── Conversation toggle button ────────────────────────────────────────
+
+export const ConversationToggle = styled.button<{ $active: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: ${({ theme }) => theme.spacing.xs};
+  padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
+  background: ${({ theme, $active }) =>
+    $active ? theme.colors.accent.blue : "transparent"};
+  color: ${({ theme, $active }) =>
+    $active ? "#fff" : theme.colors.text.secondary};
+  border: 1px solid
+    ${({ theme, $active }) =>
+      $active ? theme.colors.accent.blue : theme.colors.border.default};
+  border-radius: ${({ theme }) => theme.radii.md};
+  cursor: pointer;
+  font-family: ${({ theme }) => theme.fonts.sans};
+  font-size: ${({ theme }) => theme.fontSizes.sm};
+  font-weight: 500;
+  transition:
+    background ${({ theme }) => theme.transitions.fast},
+    color ${({ theme }) => theme.transitions.fast},
+    border-color ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    background: ${({ theme, $active }) =>
+      $active ? theme.colors.accent.blue : theme.colors.bg.elevated};
+    color: ${({ theme, $active }) =>
+      $active ? "#fff" : theme.colors.text.primary};
+    border-color: ${({ theme, $active }) =>
+      $active ? theme.colors.accent.blue : theme.colors.text.muted};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.accent.blue};
+    outline-offset: 2px;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+// ── AI edit conflict banner ─────────────────────────────────────────────
+
+export const ConflictBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: ${({ theme }) => theme.spacing.md};
+  padding: ${({ theme }) => theme.spacing.md} ${({ theme }) => theme.spacing.lg};
+  background: ${({ theme }) => theme.colors.status.warning.bg};
+  border: 1px solid ${({ theme }) => theme.colors.status.warning.border};
+  border-radius: ${({ theme }) => theme.radii.md};
+  font-family: ${({ theme }) => theme.fonts.sans};
+  font-size: ${({ theme }) => theme.fontSizes.sm};
+  color: ${({ theme }) => theme.colors.status.warning.text};
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: ${({ theme }) => theme.spacing.sm};
+  }
+`;
+
+export const ConflictBannerIcon = styled.span`
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: ${({ theme }) => theme.colors.accent.yellow};
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+`;
+
+export const ConflictBannerContent = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: ${({ theme }) => theme.spacing.xs};
+`;
+
+export const ConflictBannerTitle = styled.strong`
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.text.primary};
+`;
+
+export const ConflictBannerText = styled.p`
+  margin: 0;
+  line-height: 1.5;
+`;
+
+export const ConflictBannerActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
+  flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    justify-content: flex-end;
+  }
 `;

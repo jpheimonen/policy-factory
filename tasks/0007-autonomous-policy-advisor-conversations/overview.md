@@ -26,7 +26,7 @@ The AI becomes a co-author with its own intellectual backbone: it pushes back wh
 | [012](012.md) | Conversation store (frontend) | [x] | Create Zustand store for conversation state, messages, streaming, and pending cascade flag |
 | [013](013.md) | Conversation event dispatch | [x] | Add conversation event handlers to useEventDispatch, routing to conversation store |
 | [014](014.md) | Conversation sidebar component | [x] | Create right-aligned sliding panel with message list, input, streaming support, and pending cascade banner |
-| [015](015.md) | Item page sidebar integration | [ ] | Add conversation toggle to ItemDetailPage, adjust layout for sidebar, wire up live content refresh on file edits |
+| [015](015.md) | Item page sidebar integration | [x] | Add conversation toggle to ItemDetailPage, adjust layout for sidebar, wire up live content refresh on file edits |
 | [016](016.md) | Layer page sidebar integration | [ ] | Add conversation toggle to LayerDetailPage with same patterns as item page |
 | [017](017.md) | Backend integration tests | [ ] | Test conversation API, runner with mocked agent, cascade integration, philosophy layer in cascade |
 | [018](018.md) | E2E tests | [ ] | Browser tests for conversation sidebar, streaming, file edit feedback, pending cascade flow, philosophy layer UI |

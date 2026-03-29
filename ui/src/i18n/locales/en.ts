@@ -176,6 +176,11 @@ const en = {
     backToLayer: "Back to {layer}",
     attribution: "Attribution",
     readOnlyField: "Auto-set",
+    conversationToggle: "Chat",
+    aiConflictTitle: "AI Modified This Item",
+    aiConflictMessage: "This item was modified by the AI. Your unsaved changes may conflict.",
+    aiConflictRefresh: "Refresh",
+    aiConflictKeepEditing: "Keep editing",
   },
 
   // ── Ideas ───────────────────────────────────────────────────────────
