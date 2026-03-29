@@ -58,6 +58,7 @@ export interface Theme {
       pending: StatusColors;
     };
     layers: {
+      philosophy: LayerColors;
       values: LayerColors;
       "situational-awareness": LayerColors;
       "strategic-objectives": LayerColors;
@@ -214,6 +215,11 @@ export const darkTheme: Theme = {
       },
     },
     layers: {
+      philosophy: {
+        primary: "#f43f5e",
+        bg: "rgba(244, 63, 94, 0.12)",
+        text: "#fb7185",
+      },
       values: {
         primary: "#a855f7",
         bg: "rgba(168, 85, 247, 0.12)",
@@ -312,6 +318,11 @@ export const lightTheme: Theme = {
       },
     },
     layers: {
+      philosophy: {
+        primary: "#e11d48",
+        bg: "rgba(225, 29, 72, 0.08)",
+        text: "#be123c",
+      },
       values: {
         primary: "#7c3aed",
         bg: "rgba(124, 58, 237, 0.08)",

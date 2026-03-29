@@ -88,6 +88,7 @@ const en = {
   // ── Stack Overview (Home) ───────────────────────────────────────────
   stackOverview: {
     title: "Policy Stack",
+    layerPhilosophy: "Philosophy",
     layerValues: "Values",
     layerSituationalAwareness: "Situational Awareness",
     layerStrategicObjectives: "Strategic Objectives",

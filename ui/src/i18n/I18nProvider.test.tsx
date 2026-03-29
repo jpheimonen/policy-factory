@@ -331,10 +331,11 @@ describe("Translation file completeness", () => {
     expect(t("critics.synthesis")).toBe("Synthesis");
   });
 
-  it("contains all five layer names", () => {
+  it("contains all six layer names", () => {
     const { result } = renderHook(() => useTranslation(), { wrapper });
     const { t } = result.current;
 
+    expect(t("stackOverview.layerPhilosophy")).toBe("Philosophy");
     expect(t("stackOverview.layerValues")).toBe("Values");
     expect(t("stackOverview.layerSituationalAwareness")).toBe("Situational Awareness");
     expect(t("stackOverview.layerStrategicObjectives")).toBe("Strategic Objectives");

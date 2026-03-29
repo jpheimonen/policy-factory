@@ -7,6 +7,7 @@
 
 /** Maps layer slugs to their i18n translation keys. */
 export const LAYER_NAME_KEYS: Record<string, string> = {
+  philosophy: "stackOverview.layerPhilosophy",
   values: "stackOverview.layerValues",
   "situational-awareness": "stackOverview.layerSituationalAwareness",
   "strategic-objectives": "stackOverview.layerStrategicObjectives",
