@@ -135,6 +135,7 @@ const en = {
     invalidLayer: "Unknown layer: {slug}",
     lastModifiedBy: "by {user}",
     versionHistory: "Version History",
+    conversationToggle: "Chat",
   },
 
   // ── Items ───────────────────────────────────────────────────────────
