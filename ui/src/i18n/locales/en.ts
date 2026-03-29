@@ -578,6 +578,28 @@ const en = {
     reasoning: "Reasoning",
   },
 
+  // ── Conversations ───────────────────────────────────────────────────
+  conversations: {
+    title: "Conversation",
+    selectConversation: "Select a conversation",
+    newConversation: "New Conversation",
+    loadingMessages: "Loading messages\u2026",
+    noConversation: "No conversation selected",
+    startHint: "Select or start a new conversation",
+    noMessages: "No messages yet",
+    sendFirstMessage: "Send a message to start the conversation",
+    inputPlaceholder: "Type your message\u2026",
+    sendHint: "Ctrl+Enter to send",
+    send: "Send",
+    cascadePending: "Cascade Pending",
+    cascadePendingDescription: "File edits will trigger a cascade starting from {layer}.",
+    triggerCascade: "Trigger Cascade",
+    dismissCascade: "Dismiss",
+    filesEdited: "{count} files edited",
+    error: "Failed to load conversation",
+    sendError: "Failed to send message",
+  },
+
   // ── Errors ──────────────────────────────────────────────────────────
   errors: {
     network: "Network error. Please check your connection and try again.",
