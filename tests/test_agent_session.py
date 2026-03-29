@@ -861,6 +861,23 @@ class TestAgentSessionConfig:
         options = session._build_options()
         assert options.mcp_servers == {}
 
+    def test_allowed_tools_for_conversation_role(self) -> None:
+        """Conversation role should get MCP server reference for file tools."""
+        config = AgentConfig(role="conversation")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert "mcp__policy-factory-tools" in options.allowed_tools
+        assert "WebSearch" not in options.allowed_tools
+
+    def test_mcp_server_created_for_conversation(self) -> None:
+        """Conversation role should have MCP server with full tool set."""
+        config = AgentConfig(role="conversation")
+        emitter = EventEmitter()
+        session = AgentSession(config, emitter)
+        options = session._build_options()
+        assert "policy-factory-tools" in options.mcp_servers
+
 
 # ---------------------------------------------------------------------------
 # Context overflow tests

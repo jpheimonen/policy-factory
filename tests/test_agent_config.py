@@ -41,6 +41,10 @@ class TestResolveModel:
     def test_policies_seed_defaults_to_none(self) -> None:
         assert resolve_model("policies-seed") is None
 
+    def test_conversation_defaults_to_none(self) -> None:
+        """Conversation role uses CLI default (Opus) for tool-using capability."""
+        assert resolve_model("conversation") is None
+
     # --- Gemini model roles (tool-free, cheap) ---
 
     def test_heartbeat_skim_defaults_to_gemini_flash(self) -> None:
@@ -100,6 +104,11 @@ class TestResolveModel:
     def test_env_var_overrides_policies_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("POLICY_FACTORY_MODEL_POLICIES_SEED", "claude-sonnet-4-20250514")
         assert resolve_model("policies-seed") == "claude-sonnet-4-20250514"
+
+    def test_env_var_overrides_conversation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Conversation model can be overridden via POLICY_FACTORY_MODEL_CONVERSATION."""
+        monkeypatch.setenv("POLICY_FACTORY_MODEL_CONVERSATION", "claude-sonnet-4-20250514")
+        assert resolve_model("conversation") == "claude-sonnet-4-20250514"
 
     def test_env_var_empty_string_uses_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("POLICY_FACTORY_MODEL_CRITIC", "")
@@ -238,6 +247,12 @@ class TestResolveAllowedTools:
         assert tools == [MCP_SERVER_REF]
         assert "WebSearch" not in tools
 
+    def test_conversation_gets_mcp_ref_no_web_search(self) -> None:
+        """Conversation agent gets MCP file tools but no WebSearch."""
+        tools = resolve_allowed_tools("conversation")
+        assert tools == [MCP_SERVER_REF]
+        assert "WebSearch" not in tools
+
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):
             resolve_allowed_tools("nonexistent-role")
@@ -298,6 +313,10 @@ class TestResolveToolSet:
     def test_policies_seed_gets_full_tools(self) -> None:
         assert resolve_tool_set("policies-seed") == TOOL_SET_FULL
 
+    def test_conversation_gets_full_tools(self) -> None:
+        """Conversation agent gets full file tools (list, read, write, delete)."""
+        assert resolve_tool_set("conversation") == TOOL_SET_FULL
+
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):
             resolve_tool_set("nonexistent-role")
@@ -344,6 +363,10 @@ class TestResolveUseSearch:
 
     def test_policies_seed_no_search(self) -> None:
         assert resolve_use_search("policies-seed") is False
+
+    def test_conversation_no_search(self) -> None:
+        """Conversation agent doesn't need web search grounding by default."""
+        assert resolve_use_search("conversation") is False
 
     def test_unknown_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown agent role"):

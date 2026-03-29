@@ -18,7 +18,7 @@ The AI becomes a co-author with its own intellectual backbone: it pushes back wh
 | [004](004.md) | Values prompt fix | [x] | Update values generator prompt to enforce tension-pair format and fix technocratic consensus bias |
 | [005](005.md) | Conversation database schema | [x] | Add conversations and messages tables to schema, create ConversationStoreMixin with CRUD operations |
 | [006](006.md) | Conversation events | [x] | Define new event types for conversation lifecycle, streaming, file edits, and cascade pending |
-| [007](007.md) | Conversation agent config | [ ] | Add conversation role to agent config with full tool permissions |
+| [007](007.md) | Conversation agent config | [x] | Add conversation role to agent config with full tool permissions |
 | [008](008.md) | Cascade pending mechanism | [ ] | Add pending cascade tracking that differs from normal queue — persists until user triggers or dismisses |
 | [009](009.md) | Conversation runner | [ ] | Create runner module that orchestrates conversation turns: prompt assembly, agent execution, file edit detection, git commit |
 | [010](010.md) | Conversation system prompt | [ ] | Create the conversation agent system prompt encoding tiered epistemic authority, hold-your-ground behavior, and anti-slop standards |

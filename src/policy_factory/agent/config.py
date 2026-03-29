@@ -39,6 +39,7 @@ AgentRole = Literal[
     "strategic-seed",
     "tactical-seed",
     "policies-seed",
+    "conversation",
 ]
 
 # Default model assignments per role.
@@ -62,6 +63,7 @@ _DEFAULT_MODELS: dict[str, str | None] = {
     "strategic-seed": None,
     "tactical-seed": None,
     "policies-seed": None,
+    "conversation": None,
     # --- Gemini models (heartbeat skim/triage get RSS news in prompt) ---
     "heartbeat-skim": "gemini-2.5-flash",
     "heartbeat-triage": "gemini-2.5-flash",
@@ -91,6 +93,7 @@ _ENV_VAR_MAP: dict[str, str] = {
     "strategic-seed": "POLICY_FACTORY_MODEL_STRATEGIC_SEED",
     "tactical-seed": "POLICY_FACTORY_MODEL_TACTICAL_SEED",
     "policies-seed": "POLICY_FACTORY_MODEL_POLICIES_SEED",
+    "conversation": "POLICY_FACTORY_MODEL_CONVERSATION",
 }
 
 
@@ -161,6 +164,8 @@ _ALLOWED_TOOLS_BY_ROLE: dict[str, list[str]] = {
     "strategic-seed": [MCP_SERVER_REF],
     "tactical-seed": [MCP_SERVER_REF],
     "policies-seed": [MCP_SERVER_REF],
+    # Conversation agent needs full file access for discussing/editing content
+    "conversation": [MCP_SERVER_REF],
 }
 
 # ---------------------------------------------------------------------------
@@ -185,6 +190,7 @@ _TOOL_SET_BY_ROLE: dict[str, str] = {
     "strategic-seed": TOOL_SET_FULL,
     "tactical-seed": TOOL_SET_FULL,
     "policies-seed": TOOL_SET_FULL,
+    "conversation": TOOL_SET_FULL,
 }
 
 
@@ -208,6 +214,7 @@ _USE_SEARCH_BY_ROLE: dict[str, bool] = {
     "strategic-seed": False,
     "tactical-seed": False,
     "policies-seed": False,
+    "conversation": False,
 }
 
 
