@@ -3,6 +3,7 @@
 from policy_factory.server.routers.activity import router as activity_router
 from policy_factory.server.routers.auth import router as auth_router
 from policy_factory.server.routers.cascade import router as cascade_router
+from policy_factory.server.routers.conversations import router as conversations_router
 from policy_factory.server.routers.feedback import router as feedback_router
 from policy_factory.server.routers.health import router as health_router
 from policy_factory.server.routers.heartbeat import router as heartbeat_router
@@ -16,6 +17,7 @@ __all__ = [
     "activity_router",
     "auth_router",
     "cascade_router",
+    "conversations_router",
     "feedback_router",
     "health_router",
     "heartbeat_router",

@@ -381,8 +381,8 @@ async def run_conversation_turn(
         )
         return
 
-    # Store user message at turn start
-    store.add_message(conversation_id, "user", user_content)
+    # Note: User message is already stored by the API endpoint before
+    # calling run_conversation_turn. We don't store it here to avoid duplicates.
 
     # Emit ConversationStarted event
     await emitter.emit(ConversationStarted(conversation_id=conversation_id))
@@ -393,7 +393,7 @@ async def run_conversation_turn(
 
         # Get conversation history (all previous messages)
         messages = store.get_messages(conversation_id)
-        # Exclude the message we just added (it's the current user message)
+        # Exclude the current user message (last in list) — it goes in the prompt separately
         history_messages = messages[:-1] if messages else []
         conversation_history = [
             {"role": msg.role, "content": msg.content}
