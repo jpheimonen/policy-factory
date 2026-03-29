@@ -8,9 +8,10 @@ Provides SQLite persistence for:
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -50,6 +51,22 @@ class QueueEntry:
     starting_layer: str
     context: str | None
     queued_at: datetime
+
+
+@dataclass
+class PendingCascadeEntry:
+    """A pending conversation cascade awaiting user approval.
+
+    Unlike the cascade queue which auto-processes, pending cascades
+    persist until the user explicitly triggers or dismisses them.
+    """
+
+    id: str
+    conversation_id: str
+    starting_layer: str
+    affected_layers: list[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class CascadeStoreMixin:
@@ -343,6 +360,157 @@ class CascadeStoreMixin:
         return row["count"]
 
     # -----------------------------------------------------------------------
+    # Pending conversation cascade management
+    # -----------------------------------------------------------------------
+
+    def create_or_update_pending_cascade(
+        self,
+        conversation_id: str,
+        starting_layer: str,
+    ) -> PendingCascadeEntry:
+        """Create or update a pending conversation cascade.
+
+        Unlike the normal cascade queue which auto-processes, pending cascades
+        persist until the user explicitly triggers or dismisses them.
+
+        If no pending cascade exists, creates one with the given starting_layer.
+        If a pending cascade already exists:
+        - If the new starting_layer is lower in hierarchy, updates starting_layer
+        - Adds the new layer to affected_layers if not already present
+        - Updates the updated_at timestamp
+
+        Args:
+            conversation_id: ID of the conversation that triggered this.
+            starting_layer: The layer that was edited.
+
+        Returns:
+            The created or updated PendingCascadeEntry.
+        """
+        from policy_factory.data.layers import get_layer
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Check for existing pending cascade
+        existing = self.get_pending_cascade()
+
+        if existing is None:
+            # Create new pending cascade
+            entry_id = str(uuid.uuid4())
+            affected = [starting_layer]
+            self.conn.execute(
+                "INSERT INTO pending_conversation_cascade "
+                "(id, conversation_id, starting_layer, affected_layers, "
+                " created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    entry_id,
+                    conversation_id,
+                    starting_layer,
+                    json.dumps(affected),
+                    now,
+                    now,
+                ),
+            )
+            self.conn.commit()
+            return PendingCascadeEntry(
+                id=entry_id,
+                conversation_id=conversation_id,
+                starting_layer=starting_layer,
+                affected_layers=affected,
+                created_at=datetime.fromisoformat(now),
+                updated_at=datetime.fromisoformat(now),
+            )
+
+        # Update existing pending cascade
+        new_starting_layer = existing.starting_layer
+        new_affected = list(existing.affected_layers)
+
+        # Check if new layer is lower in hierarchy (smaller position number)
+        existing_layer_info = get_layer(existing.starting_layer)
+        new_layer_info = get_layer(starting_layer)
+
+        if existing_layer_info and new_layer_info:
+            if new_layer_info.position < existing_layer_info.position:
+                new_starting_layer = starting_layer
+
+        # Add to affected layers if not present
+        if starting_layer not in new_affected:
+            new_affected.append(starting_layer)
+
+        self.conn.execute(
+            "UPDATE pending_conversation_cascade "
+            "SET conversation_id = ?, starting_layer = ?, affected_layers = ?, "
+            "    updated_at = ? "
+            "WHERE id = ?",
+            (
+                conversation_id,
+                new_starting_layer,
+                json.dumps(new_affected),
+                now,
+                existing.id,
+            ),
+        )
+        self.conn.commit()
+
+        return PendingCascadeEntry(
+            id=existing.id,
+            conversation_id=conversation_id,
+            starting_layer=new_starting_layer,
+            affected_layers=new_affected,
+            created_at=existing.created_at,
+            updated_at=datetime.fromisoformat(now),
+        )
+
+    def get_pending_cascade(self) -> PendingCascadeEntry | None:
+        """Return the current pending cascade if one exists.
+
+        Only one pending cascade should exist at a time (single-user system).
+
+        Returns:
+            The PendingCascadeEntry, or None if no pending cascade exists.
+        """
+        row = self.conn.execute(
+            "SELECT * FROM pending_conversation_cascade LIMIT 1"
+        ).fetchone()
+        if not row:
+            return None
+        return self._row_to_pending_cascade_entry(row)
+
+    def get_pending_cascade_by_conversation(
+        self,
+        conversation_id: str,
+    ) -> PendingCascadeEntry | None:
+        """Return pending cascade associated with a specific conversation.
+
+        Args:
+            conversation_id: The conversation ID to filter by.
+
+        Returns:
+            The PendingCascadeEntry if found, None otherwise.
+        """
+        row = self.conn.execute(
+            "SELECT * FROM pending_conversation_cascade WHERE conversation_id = ?",
+            (conversation_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return self._row_to_pending_cascade_entry(row)
+
+    def clear_pending_cascade(self) -> bool:
+        """Delete the pending cascade record.
+
+        Used after the cascade is triggered or dismissed.
+
+        Returns:
+            True if a record was deleted, False if none existed.
+        """
+        cursor = self.conn.execute(
+            "DELETE FROM pending_conversation_cascade"
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    # -----------------------------------------------------------------------
     # Row conversion helpers
     # -----------------------------------------------------------------------
 
@@ -374,4 +542,18 @@ class CascadeStoreMixin:
             starting_layer=row["starting_layer"],
             context=row["context"],
             queued_at=datetime.fromisoformat(row["queued_at"]),
+        )
+
+    def _row_to_pending_cascade_entry(
+        self, row: sqlite3.Row
+    ) -> PendingCascadeEntry:
+        """Convert a database row to a PendingCascadeEntry dataclass."""
+        affected_layers = json.loads(row["affected_layers"])
+        return PendingCascadeEntry(
+            id=row["id"],
+            conversation_id=row["conversation_id"],
+            starting_layer=row["starting_layer"],
+            affected_layers=affected_layers,
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
         )

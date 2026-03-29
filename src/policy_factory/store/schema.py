@@ -195,6 +195,15 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+
+CREATE TABLE IF NOT EXISTS pending_conversation_cascade (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    starting_layer TEXT NOT NULL,
+    affected_layers TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 

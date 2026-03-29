@@ -9,7 +9,7 @@ from pathlib import Path
 from .agent_run import AgentRun, AgentRunStoreMixin
 from .auth import AuthStoreMixin, User, UserPublic
 from .base import BaseStore
-from .cascade import CascadeRun, CascadeStoreMixin, QueueEntry
+from .cascade import CascadeRun, CascadeStoreMixin, PendingCascadeEntry, QueueEntry
 from .conversation import Conversation, ConversationStoreMixin, Message
 from .critic_result import CriticResult, CriticResultMixin, SynthesisResult
 from .events import EventStoreMixin, StoredEvent
@@ -66,6 +66,7 @@ __all__ = [
     "Idea",
     "IdeaScore",
     "Message",
+    "PendingCascadeEntry",
     "PolicyStore",
     "QueueEntry",
     "StoredEvent",
