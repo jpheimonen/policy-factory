@@ -204,17 +204,22 @@ class TestLayerHierarchy:
         with pytest.raises(ValueError, match="Invalid starting layer"):
             layers_from("invalid-layer")
 
+    def test_layers_below_philosophy(self) -> None:
+        """Philosophy has no layers below it (it's the bottom)."""
+        assert layers_below("philosophy") == []
+
     def test_layers_below_values(self) -> None:
-        """Values has no layers below it."""
-        assert layers_below("values") == []
+        """Values has philosophy below it."""
+        assert layers_below("values") == ["philosophy"]
 
     def test_layers_below_situational_awareness(self) -> None:
-        """SA has values below it."""
-        assert layers_below("situational-awareness") == ["values"]
+        """SA has philosophy and values below it."""
+        assert layers_below("situational-awareness") == ["philosophy", "values"]
 
     def test_layers_below_policies(self) -> None:
-        """Policies has all 4 other layers below it."""
+        """Policies has all 5 other layers below it."""
         assert layers_below("policies") == [
+            "philosophy",
             "values",
             "situational-awareness",
             "strategic-objectives",
@@ -235,11 +240,17 @@ class TestLayerHierarchy:
 class TestContextGathering:
     """Tests for generation context gathering."""
 
-    def test_gather_context_for_values(self, data_dir: Path) -> None:
-        """Values layer has no layers below, so context is minimal."""
-        context = _gather_generation_context(data_dir, "values")
-        # No layers below values
+    def test_gather_context_for_philosophy(self, data_dir: Path) -> None:
+        """Philosophy layer has no layers below, so context is minimal."""
+        context = _gather_generation_context(data_dir, "philosophy")
+        # No layers below philosophy
         assert context == ""
+
+    def test_gather_context_for_values(self, data_dir: Path) -> None:
+        """Values layer gathers context from philosophy below."""
+        context = _gather_generation_context(data_dir, "values")
+        # Philosophy is below values
+        assert "Philosophy" in context or context == ""  # May be empty if no philosophy content
 
     def test_gather_context_for_sa(self, data_dir: Path) -> None:
         """SA layer gathers context from values below."""

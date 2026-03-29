@@ -104,6 +104,24 @@ class MemoStatusUpdate(BaseModel):
     status: str  # accepted or dismissed
 
 
+class PendingCascadeResponse(BaseModel):
+    """Response for pending cascade operations."""
+
+    id: str
+    conversation_id: str
+    starting_layer: str
+    affected_layers: list[str]
+    created_at: str
+    updated_at: str
+
+
+class TriggerPendingResponse(BaseModel):
+    """Response for triggering a pending cascade."""
+
+    cascade_id: str
+    is_cascade: bool
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -460,4 +478,85 @@ async def cancel_queued_cascade(
             detail=f"Queue entry not found: {queue_id}",
         )
 
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Pending conversation cascade endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/pending")
+async def get_pending_cascade(
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+) -> PendingCascadeResponse | None:
+    """Get the current pending conversation cascade, if any.
+
+    Returns the pending cascade record or null if none exists.
+    """
+    store = get_store()
+    pending = store.get_pending_cascade()
+    if pending is None:
+        return None
+    return PendingCascadeResponse(
+        id=pending.id,
+        conversation_id=pending.conversation_id,
+        starting_layer=pending.starting_layer,
+        affected_layers=pending.affected_layers,
+        created_at=pending.created_at.isoformat(),
+        updated_at=pending.updated_at.isoformat(),
+    )
+
+
+@router.post("/trigger-pending")
+async def trigger_pending_cascade(
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+) -> TriggerPendingResponse:
+    """Trigger the pending conversation cascade.
+
+    Retrieves the pending cascade record, clears it, and triggers
+    a cascade from the stored starting_layer.
+
+    Returns 404 if no pending cascade exists.
+    """
+    store = get_store()
+    emitter = get_event_emitter()
+    data_dir = get_data_dir()
+
+    # Retrieve the pending cascade
+    pending = store.get_pending_cascade()
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No pending cascade exists",
+        )
+
+    # Clear the pending record first
+    store.clear_pending_cascade()
+
+    # Trigger the actual cascade
+    result_id, is_cascade = await trigger_cascade(
+        trigger_source="layer_refresh",
+        starting_layer=pending.starting_layer,
+        store=store,
+        emitter=emitter,
+        data_dir=data_dir,
+    )
+
+    return TriggerPendingResponse(
+        cascade_id=result_id,
+        is_cascade=is_cascade,
+    )
+
+
+@router.delete("/pending", status_code=status.HTTP_204_NO_CONTENT)
+async def dismiss_pending_cascade(
+    _current_user: Annotated[UserPublic, Depends(get_current_user)],
+) -> Response:
+    """Dismiss the pending conversation cascade without triggering.
+
+    Idempotent — returns 204 even if no pending cascade exists.
+    """
+    store = get_store()
+    store.clear_pending_cascade()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

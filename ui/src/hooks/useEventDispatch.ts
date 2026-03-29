@@ -13,17 +13,24 @@
  * - Cascade events → cascade store
  * - Layer processing events → cascade store
  * - Agent text chunk events → cascade store (streaming text buffer)
+ * - Seed events → seed progress store
  * - Idea events → idea store
- * - All events → activity store (complete chronological stream)
+ * - Conversation events → conversation store
+ * - All events → activity store (except high-frequency streaming events)
  *
  * Side effects:
  * - cascade_completed → triggers layer store refresh
+ * - seed_completed → triggers layer store refresh
+ * - conversation_file_edit → triggers layer store refresh
+ * - conversation_turn_complete → triggers layer store refresh
  */
 import { useCallback } from "react";
 import { useCascadeStore } from "@/stores/cascadeStore.ts";
+import { useConversationStore } from "@/stores/conversationStore.ts";
 import { useIdeaStore } from "@/stores/ideaStore.ts";
 import { useActivityStore } from "@/stores/activityStore.ts";
 import { useLayerStore } from "@/stores/layerStore.ts";
+import { useSeedProgressStore } from "@/stores/seedProgressStore.ts";
 import type { PolicyEvent } from "@/types/events.ts";
 
 /**
@@ -108,6 +115,19 @@ export function useEventDispatch() {
         ideaStore.handleIdeaGenerationCompleted(event);
         break;
 
+      // Seed progress events → seed progress store
+      case "seed_started":
+        useSeedProgressStore.getState().handleSeedStarted(event);
+        break;
+      case "seed_progress":
+        useSeedProgressStore.getState().handleSeedProgress(event);
+        break;
+      case "seed_completed":
+        useSeedProgressStore.getState().handleSeedCompleted(event);
+        // Side effect: refresh layer data (seed created content)
+        useLayerStore.getState().refresh();
+        break;
+
       // Heartbeat and system events — no dedicated store action needed.
       // They still go to the activity store (below).
       case "heartbeat_started":
@@ -118,12 +138,39 @@ export function useEventDispatch() {
       case "cascade_lock_acquired":
       case "cascade_lock_released":
         break;
+
+      // Conversation events → conversation store
+      case "conversation_started":
+        useConversationStore.getState().handleConversationStarted(event);
+        break;
+      case "conversation_text_chunk":
+        useConversationStore.getState().handleConversationTextChunk(event);
+        break;
+      case "conversation_file_edit":
+        useConversationStore.getState().handleConversationFileEdit(event);
+        // Side effect: refresh layer data (AI edited files)
+        useLayerStore.getState().refresh();
+        break;
+      case "conversation_turn_complete":
+        useConversationStore.getState().handleConversationTurnComplete(event);
+        // Side effect: refresh layer data (AI may have edited files)
+        useLayerStore.getState().refresh();
+        break;
+      case "conversation_cascade_pending":
+        useConversationStore.getState().handleConversationCascadePending(event);
+        break;
+      case "conversation_turn_error":
+        useConversationStore.getState().handleConversationTurnError(event);
+        break;
     }
 
     // ── All events → activity store ──────────────────────────────
-    // Skip high-frequency agent_text_chunk from the activity feed
-    // to avoid flooding it with streaming text.
-    if (event.event_type !== "agent_text_chunk") {
+    // Skip high-frequency streaming events from the activity feed
+    // to avoid flooding it with streaming text fragments.
+    if (
+      event.event_type !== "agent_text_chunk" &&
+      event.event_type !== "conversation_text_chunk"
+    ) {
       activityStore.addEvent(event);
     }
   }, []);

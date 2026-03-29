@@ -9,7 +9,8 @@ from pathlib import Path
 from .agent_run import AgentRun, AgentRunStoreMixin
 from .auth import AuthStoreMixin, User, UserPublic
 from .base import BaseStore
-from .cascade import CascadeRun, CascadeStoreMixin, QueueEntry
+from .cascade import CascadeRun, CascadeStoreMixin, PendingCascadeEntry, QueueEntry
+from .conversation import Conversation, ConversationStoreMixin, Message
 from .critic_result import CriticResult, CriticResultMixin, SynthesisResult
 from .events import EventStoreMixin, StoredEvent
 from .feedback_memo import FeedbackMemo, FeedbackMemoMixin
@@ -25,6 +26,7 @@ class PolicyStore(
     EventStoreMixin,
     CascadeStoreMixin,
     AgentRunStoreMixin,
+    ConversationStoreMixin,
     CriticResultMixin,
     FeedbackMemoMixin,
     IdeaStoreMixin,
@@ -39,6 +41,7 @@ class PolicyStore(
     - EventStoreMixin: Event persistence and retrieval
     - CascadeStoreMixin: Cascade run tracking, lock, and queue
     - AgentRunStoreMixin: Agent invocation history
+    - ConversationStoreMixin: Conversation and message storage
     - CriticResultMixin: Critic and synthesis result storage
     - FeedbackMemoMixin: Bidirectional feedback between layers
     - IdeaStoreMixin: Idea submission and lifecycle management
@@ -56,11 +59,14 @@ class PolicyStore(
 __all__ = [
     "AgentRun",
     "CascadeRun",
+    "Conversation",
     "CriticResult",
     "FeedbackMemo",
     "HeartbeatRun",
     "Idea",
     "IdeaScore",
+    "Message",
+    "PendingCascadeEntry",
     "PolicyStore",
     "QueueEntry",
     "StoredEvent",

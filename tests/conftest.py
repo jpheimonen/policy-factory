@@ -27,6 +27,20 @@ from policy_factory.server.ws import ConnectionManager
 from policy_factory.store import PolicyStore
 
 # ---------------------------------------------------------------------------
+# Global test environment setup
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _disable_local_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure local mode is disabled for all tests.
+
+    The .env file may have POLICY_FACTORY_LOCAL_MODE=true for development,
+    but tests should always use real authentication flows.
+    """
+    monkeypatch.delenv("POLICY_FACTORY_LOCAL_MODE", raising=False)
+
+# ---------------------------------------------------------------------------
 # Basic fixtures (preserved from original for backward compatibility)
 # ---------------------------------------------------------------------------
 

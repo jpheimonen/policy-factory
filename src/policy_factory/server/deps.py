@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -311,6 +312,20 @@ def shutdown_scheduler() -> None:
         _scheduler = None
 
 
+def _is_local_mode() -> bool:
+    """Check if local mode (auth bypass) is enabled."""
+    return os.environ.get("POLICY_FACTORY_LOCAL_MODE", "").lower() in ("true", "1", "yes")
+
+
+# Mock admin user for local mode — singleton to avoid recreating
+_LOCAL_ADMIN_USER = UserPublic(
+    id="local-admin",
+    email="admin@local",
+    role="admin",
+    created_at=datetime(2000, 1, 1, tzinfo=timezone.utc),
+)
+
+
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
     store: Annotated[PolicyStore, Depends(get_store)],
@@ -323,9 +338,16 @@ async def get_current_user(
     3. Looks up the user in the database (to ensure they still exist)
     4. Returns the user record (without password hash)
 
+    In local mode (POLICY_FACTORY_LOCAL_MODE=true), bypasses auth entirely
+    and returns a mock admin user. NEVER enable in production.
+
     Raises:
         HTTPException 401: If no auth header, invalid/expired token, or user not found.
     """
+    # Local mode bypass — return mock admin without any auth checks
+    if _is_local_mode():
+        return _LOCAL_ADMIN_USER
+
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

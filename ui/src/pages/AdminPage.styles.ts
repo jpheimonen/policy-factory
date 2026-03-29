@@ -252,3 +252,13 @@ export const LayerCount = styled.span`
   color: ${({ theme }) => theme.colors.text.muted};
   white-space: nowrap;
 `;
+
+export const SeedProgressMessage = styled.span`
+  font-family: ${({ theme }) => theme.fonts.sans};
+  font-size: ${({ theme }) => theme.fontSizes.xs};
+  color: ${({ theme }) => theme.colors.status.active.text};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
+`;

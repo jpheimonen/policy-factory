@@ -30,11 +30,12 @@ from policy_factory.data.markdown import write_markdown
 class TestLayerDefinitions:
     """Tests for layer metadata and validation."""
 
-    def test_five_layers_defined(self) -> None:
-        assert len(LAYERS) == 5
+    def test_six_layers_defined(self) -> None:
+        assert len(LAYERS) == 6
 
     def test_all_slugs_valid(self) -> None:
         expected = {
+            "philosophy",
             "values",
             "situational-awareness",
             "strategic-objectives",
@@ -44,12 +45,20 @@ class TestLayerDefinitions:
         assert LAYER_SLUGS == expected
 
     def test_get_layer_valid(self) -> None:
+        layer = get_layer("philosophy")
+        assert layer is not None
+        assert isinstance(layer, LayerInfo)
+        assert layer.slug == "philosophy"
+        assert layer.display_name == "Philosophy"
+        assert layer.position == 1
+
+    def test_get_layer_values(self) -> None:
         layer = get_layer("values")
         assert layer is not None
         assert isinstance(layer, LayerInfo)
         assert layer.slug == "values"
         assert layer.display_name == "Values"
-        assert layer.position == 1
+        assert layer.position == 2
 
     def test_get_layer_invalid(self) -> None:
         assert get_layer("nonexistent") is None
@@ -64,9 +73,9 @@ class TestLayerDefinitions:
             validate_layer_slug("not-a-layer")
 
     def test_layer_ordering(self) -> None:
-        """Layers should be ordered bottom (1) to top (5)."""
+        """Layers should be ordered bottom (1) to top (6)."""
         positions = [layer.position for layer in LAYERS]
-        assert positions == [1, 2, 3, 4, 5]
+        assert positions == [1, 2, 3, 4, 5, 6]
 
     def test_get_layer_path(self, tmp_path: Path) -> None:
         path = get_layer_path(tmp_path, "values")

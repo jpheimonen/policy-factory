@@ -39,6 +39,10 @@ export type EventType =
   | "heartbeat_started"
   | "heartbeat_tier_completed"
   | "heartbeat_completed"
+  // Seed progress (3)
+  | "seed_started"
+  | "seed_progress"
+  | "seed_completed"
   // Ideas (5)
   | "idea_submitted"
   | "idea_evaluation_started"
@@ -49,9 +53,16 @@ export type EventType =
   | "user_login"
   | "user_created"
   | "cascade_lock_acquired"
-  | "cascade_lock_released";
+  | "cascade_lock_released"
+  // Conversation (6)
+  | "conversation_started"
+  | "conversation_text_chunk"
+  | "conversation_file_edit"
+  | "conversation_turn_complete"
+  | "conversation_cascade_pending"
+  | "conversation_turn_error";
 
-export type EventCategory = "cascade" | "heartbeat" | "idea" | "system";
+export type EventCategory = "cascade" | "conversation" | "heartbeat" | "idea" | "seed" | "system";
 
 // ── Base event interface ───────────────────────────────────────────
 
@@ -182,6 +193,29 @@ export interface HeartbeatCompletedEvent extends BaseEvent {
   highest_tier: number;
 }
 
+// ── Seed progress events ──────────────────────────────────────────
+
+export interface SeedStartedEvent extends BaseEvent {
+  event_type: "seed_started";
+  layer_slug: string;
+  agent_label: string;
+}
+
+export interface SeedProgressEvent extends BaseEvent {
+  event_type: "seed_progress";
+  layer_slug: string;
+  step: string;
+  message: string;
+}
+
+export interface SeedCompletedEvent extends BaseEvent {
+  event_type: "seed_completed";
+  layer_slug: string;
+  success: boolean;
+  message: string;
+  items_created: number;
+}
+
 // ── Idea events ────────────────────────────────────────────────────
 
 export interface IdeaSubmittedEvent extends BaseEvent {
@@ -232,6 +266,46 @@ export interface CascadeLockReleasedEvent extends BaseEvent {
   cascade_id: string;
 }
 
+// ── Conversation events ────────────────────────────────────────────
+
+export interface ConversationStartedEvent extends BaseEvent {
+  event_type: "conversation_started";
+  conversation_id: string;
+}
+
+export interface ConversationTextChunkEvent extends BaseEvent {
+  event_type: "conversation_text_chunk";
+  conversation_id: string;
+  text: string;
+}
+
+export interface ConversationFileEditEvent extends BaseEvent {
+  event_type: "conversation_file_edit";
+  conversation_id: string;
+  layer_slug: string;
+  filename: string;
+  action: "write" | "delete";
+}
+
+export interface ConversationTurnCompleteEvent extends BaseEvent {
+  event_type: "conversation_turn_complete";
+  conversation_id: string;
+  message_id: string;
+  files_edited: string[];
+}
+
+export interface ConversationCascadePendingEvent extends BaseEvent {
+  event_type: "conversation_cascade_pending";
+  conversation_id: string;
+  starting_layer: string;
+}
+
+export interface ConversationTurnErrorEvent extends BaseEvent {
+  event_type: "conversation_turn_error";
+  conversation_id: string;
+  error_message: string;
+}
+
 // ── Discriminated union ────────────────────────────────────────────
 
 export type PolicyEvent =
@@ -256,6 +330,10 @@ export type PolicyEvent =
   | HeartbeatStartedEvent
   | HeartbeatTierCompletedEvent
   | HeartbeatCompletedEvent
+  // Seed progress
+  | SeedStartedEvent
+  | SeedProgressEvent
+  | SeedCompletedEvent
   // Ideas
   | IdeaSubmittedEvent
   | IdeaEvaluationStartedEvent
@@ -266,7 +344,14 @@ export type PolicyEvent =
   | UserLoginEvent
   | UserCreatedEvent
   | CascadeLockAcquiredEvent
-  | CascadeLockReleasedEvent;
+  | CascadeLockReleasedEvent
+  // Conversation
+  | ConversationStartedEvent
+  | ConversationTextChunkEvent
+  | ConversationFileEditEvent
+  | ConversationTurnCompleteEvent
+  | ConversationCascadePendingEvent
+  | ConversationTurnErrorEvent;
 
 // ── Replay API response ────────────────────────────────────────────
 
@@ -311,6 +396,9 @@ const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   heartbeat_started: "heartbeat",
   heartbeat_tier_completed: "heartbeat",
   heartbeat_completed: "heartbeat",
+  seed_started: "seed",
+  seed_progress: "seed",
+  seed_completed: "seed",
   idea_submitted: "idea",
   idea_evaluation_started: "idea",
   idea_evaluation_completed: "idea",
@@ -320,6 +408,13 @@ const EVENT_CATEGORY_MAP: Record<EventType, EventCategory> = {
   user_created: "system",
   cascade_lock_acquired: "system",
   cascade_lock_released: "system",
+  // Conversation
+  conversation_started: "conversation",
+  conversation_text_chunk: "conversation",
+  conversation_file_edit: "conversation",
+  conversation_turn_complete: "conversation",
+  conversation_cascade_pending: "conversation",
+  conversation_turn_error: "conversation",
 };
 
 export function getEventCategory(eventType: EventType): EventCategory {

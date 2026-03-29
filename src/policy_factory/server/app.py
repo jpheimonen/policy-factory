@@ -26,6 +26,7 @@ from policy_factory.server.routers import (
     activity_router,
     auth_router,
     cascade_router,
+    conversations_router,
     feedback_router,
     health_router,
     heartbeat_router,
@@ -126,6 +127,7 @@ def create_app(
     app.include_router(history_router)
     app.include_router(activity_router)
     app.include_router(cascade_router)
+    app.include_router(conversations_router)
     app.include_router(seed_router)
     app.include_router(feedback_router)
     app.include_router(ideas_router)

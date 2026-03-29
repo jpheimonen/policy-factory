@@ -3,7 +3,7 @@
  *
  * Manages layer listing data and per-layer detail data fetched from the backend API.
  * Provides layers in their canonical hierarchical order
- * (Values → Situational Awareness → Strategic Objectives → Tactical Objectives → Policies)
+ * (Philosophy → Values → Situational Awareness → Strategic Objectives → Tactical Objectives → Policies)
  * regardless of the order returned by the API.
  *
  * The store holds two data slices:
@@ -17,7 +17,7 @@
  * - Initialize guard to prevent duplicate fetches
  */
 import { create } from "zustand";
-import { apiRequest } from "@/lib/apiClient.ts";
+import { apiRequest, extractErrorDetail } from "@/lib/apiClient.ts";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -54,6 +54,7 @@ export interface FeedbackMemo {
 
 /** Canonical layer order (bottom to top) */
 const LAYER_ORDER: readonly string[] = [
+  "philosophy",
   "values",
   "situational-awareness",
   "strategic-objectives",
@@ -73,14 +74,6 @@ function sortLayers(layers: LayerSummary[]): LayerSummary[] {
 /** Check if a slug is one of the 5 known layer slugs. */
 export function isValidLayerSlug(slug: string): boolean {
   return LAYER_ORDER.includes(slug);
-}
-
-/** Extract error detail from API errors */
-function extractErrorDetail(err: unknown, fallback: string): string {
-  if (err && typeof err === "object" && "detail" in err) {
-    return String((err as { detail: string }).detail);
-  }
-  return fallback;
 }
 
 // ── Store definition ─────────────────────────────────────────────────

@@ -27,6 +27,17 @@ export function isApiError(err: unknown): err is ApiError {
   );
 }
 
+/** Extract error detail from API errors, with fallback for non-API errors. */
+export function extractErrorDetail(err: unknown, fallback: string): string {
+  if (isApiError(err)) {
+    return err.detail;
+  }
+  if (err && typeof err === "object" && "detail" in err) {
+    return String((err as { detail: string }).detail);
+  }
+  return fallback;
+}
+
 // ── Token management ─────────────────────────────────────────────────
 
 /** Read the stored JWT from localStorage. */

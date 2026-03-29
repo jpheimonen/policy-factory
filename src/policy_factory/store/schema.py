@@ -174,6 +174,36 @@ CREATE TABLE IF NOT EXISTS heartbeat_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_heartbeat_runs_started_at ON heartbeat_runs(started_at);
+
+CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    layer_slug TEXT NOT NULL,
+    filename TEXT,
+    created_at TEXT NOT NULL,
+    last_active_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_layer_item ON conversations(layer_slug, filename);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    files_edited TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+
+CREATE TABLE IF NOT EXISTS pending_conversation_cascade (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    starting_layer TEXT NOT NULL,
+    affected_layers TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 

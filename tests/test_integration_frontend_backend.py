@@ -110,7 +110,7 @@ class TestLayersListingResponseShape:
         layers = resp.json()
 
         assert isinstance(layers, list)
-        assert len(layers) == 5  # All 5 layers
+        assert len(layers) == 6  # All 6 layers
 
         for layer in layers:
             # Required fields the frontend expects
